@@ -52,7 +52,7 @@ func (um *UserManager) NewUser(id string) *User {
 	if _, exist := um.users[id]; exist {
 		return nil
 	}
-	um.users[id] = &User{Id: id, um: um, conns: make(map[*Connection]bool), noConns:make(chan bool)}
+	um.users[id] = &User{Id: id, um: um, conns: make(map[*Connection]bool), noConns: make(chan bool)}
 	return um.users[id]
 }
 
@@ -89,9 +89,9 @@ func (um *UserManager) run() {
 
 type User struct {
 	sync.RWMutex
-	Id    string
-	um    *UserManager
-	conns map[*Connection]bool
+	Id      string
+	um      *UserManager
+	conns   map[*Connection]bool
 	noConns chan bool
 }
 
@@ -108,10 +108,10 @@ func (u *User) Send(packet *Packet) {
 }
 
 func (u *User) PushLogTest() {
-	tick := time.Tick(1*time.Second)
-	for i := 0; ; i++ {
+	tick := time.Tick(1 * time.Second)
+	for i := int64(0); ; i++ {
 		select {
-		case t := <- tick:
+		case t := <-tick:
 			irclog := &IRCLog{
 				Log_id:    i,
 				Timestamp: UnixMilli(t),
@@ -123,7 +123,7 @@ func (u *User) PushLogTest() {
 			packet.RawData["logs"] = []*IRCLog{irclog}
 			logger.Printf("%+v\n", *packet)
 			u.Send(packet)
-		case <- u.noConns:
+		case <-u.noConns:
 			logger.Println("There is No Connection.")
 			return
 		}

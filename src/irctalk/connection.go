@@ -5,10 +5,24 @@ import (
 )
 
 type Connection struct {
-	ws      *websocket.Conn
-	send    chan *Packet
-	user    *User
-	handler PacketHandler
+	ws          *websocket.Conn
+	send        chan *Packet
+	user        *User
+	handler     PacketHandler
+	last_log_id int64
+}
+
+func AuthUser(f func(*Connection, *Packet)) func(*Connection, *Packet) {
+	return func(c *Connection, packet *Packet) {
+		if c.user != nil {
+			f(c, packet)
+		} else {
+			resp := packet.MakeResponse()
+			defer c.Send(resp)
+			resp.Status = -401
+			resp.Msg = "Authorization Required"
+		}
+	}
 }
 
 func MakeDefaultPacketHandler() *PacketMux {
@@ -57,7 +71,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		logger.Printf("%+v\n", user)
 	})
 
-	h.HandleFunc("getServers", func(c *Connection, packet *Packet) {
+	h.HandleFunc("getServers", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
 		if c.user == nil {
@@ -67,9 +81,9 @@ func MakeDefaultPacketHandler() *PacketMux {
 		}
 		resp.RawData["servers"] = c.user.GetServers()
 		logger.Printf("%+v\n", resp)
-	})
+	}))
 
-	h.HandleFunc("getLogs", func(c *Connection, packet *Packet) {
+	h.HandleFunc("getLogs", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
 		if c.user == nil {
@@ -79,11 +93,11 @@ func MakeDefaultPacketHandler() *PacketMux {
 		}
 		resp.RawData["logs"] = c.user.GetLogs()
 		logger.Printf("%+v\n", resp)
-	})
+	}))
 
-	h.HandleFunc("pushLogs", func(c *Connection, packet *Packet) {
+	h.HandleFunc("pushLogs", AuthUser(func(c *Connection, packet *Packet) {
 		logger.Printf("%+v\n", packet)
-	})
+	}))
 	return h
 }
 

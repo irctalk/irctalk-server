@@ -9,7 +9,7 @@ func UnixMilli(t time.Time) int64 {
 }
 
 type IRCLog struct {
-	Log_id    int    `json:"log_id"`
+	Log_id    int64  `json:"log_id"`
 	Timestamp int64  `json:"timestamp"`
 	Server_id int    `json:"server_id"`
 	Channel   string `json:"channel"`
@@ -60,6 +60,7 @@ var TestLog = &IRCLog{
 var TestChannel = &IRCChannel{
 	Server_id: 0,
 	Channel:   "#test",
+	Topic:     "호옹이",
 	UserCount: 3,
 	Last_log:  TestLog,
 }

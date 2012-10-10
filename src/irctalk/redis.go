@@ -7,7 +7,7 @@ import (
 )
 
 // temporary type
-type RedisConnection interface{} 
+type RedisConnection interface{}
 type RedisConnector struct {
 	write chan RedisWriter
 	read  chan RedisReader
