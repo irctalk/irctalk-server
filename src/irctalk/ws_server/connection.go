@@ -167,7 +167,7 @@ STOP:
 func (c *Connection) writer() {
 	for packet := range c.send {
 		logger.Println("try to write packet")
-		c.ws.SetWriteDeadline(time.Now().Add(time.Second))
+		c.ws.SetWriteDeadline(time.Now().Add(10*time.Second))
 		err := websocket.JSON.Send(c.ws, packet)
 		if err != nil {
 			logger.Println("Write error: ", err)
