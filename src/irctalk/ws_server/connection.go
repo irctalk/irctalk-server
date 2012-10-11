@@ -12,6 +12,7 @@ type Connection struct {
 	user        *User
 	handler     PacketHandler
 	last_log_id int64
+	stoprecv    chan bool
 }
 
 func AuthUser(f func(*Connection, *Packet)) func(*Connection, *Packet) {
@@ -85,14 +86,14 @@ func MakeDefaultPacketHandler() *PacketMux {
 		logger.Printf("%+v\n", resp)
 	}))
 
-	h.HandleFunc("pushLogs", AuthUser(func(c *Connection, packet *Packet) {
+	h.HandleFunc("pushLog", AuthUser(func(c *Connection, packet *Packet) {
 		logger.Printf("%+v\n", packet)
 	}))
 
 	h.HandleFunc("sendLog", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		resp.RawData["log"] = &common.IRCLog{
+		irclog := &common.IRCLog{
 			Log_id:    <-c.user.log_id,
 			Server_id: int(packet.RawData["server_id"].(float64)),
 			Timestamp: common.UnixMilli(time.Now()),
@@ -100,6 +101,10 @@ func MakeDefaultPacketHandler() *PacketMux {
 			From:      "irctalk",
 			Message:   packet.RawData["message"].(string),
 		}
+
+		resp.RawData["log"] = irclog
+		push := &Packet{Cmd: "pushLog", RawData: map[string]interface{}{"log": irclog}}
+		c.user.Send(push, c)
 	}))
 	return h
 }
@@ -130,15 +135,30 @@ func (cm *ConnectionManager) run() {
 }
 
 func (c *Connection) reader() {
+	recv := make(chan *Packet)
+	stop := make(chan bool, 1)
+	c.stoprecv = make(chan bool, 1)
+STOP:
 	for {
-		var packet *Packet
-		err := websocket.JSON.Receive(c.ws, &packet)
-		if err != nil {
-			logger.Println("Read error: ", err)
-			break
+		go func() {
+			var packet *Packet
+			err := websocket.JSON.Receive(c.ws, &packet)
+			if err != nil {
+				logger.Println("Read error: ", err)
+				stop <- true
+				return
+			}
+			recv <- packet
+		}()
+		select {
+		case packet := <-recv:
+			logger.Printf("%+v\n", packet)
+			c.handler.Handle(c, packet)
+		case <-c.stoprecv:
+			break STOP
+		case <-stop:
+			break STOP
 		}
-		logger.Printf("%+v\n", packet)
-		c.handler.Handle(c, packet)
 	}
 	c.ws.Close()
 	logger.Println("closed")
@@ -146,13 +166,18 @@ func (c *Connection) reader() {
 
 func (c *Connection) writer() {
 	for packet := range c.send {
+		logger.Println("try to write packet")
+		c.ws.SetWriteDeadline(time.Now().Add(time.Second))
 		err := websocket.JSON.Send(c.ws, packet)
 		if err != nil {
 			logger.Println("Write error: ", err)
 			break
 		}
+		logger.Println("success to write packet")
 	}
 	c.ws.Close()
+	c.stoprecv <- true
+	logger.Println("Write Closed")
 }
 
 func (c *Connection) Send(packet *Packet) {
@@ -161,5 +186,9 @@ func (c *Connection) Send(packet *Packet) {
 			logger.Printf("Connection Closed. This Packet will be dropped.")
 		}
 	}()
-	c.send <- packet
+	select {
+	case c.send <- packet:
+	case <-time.After(2 * time.Second):
+		logger.Printf("Send Buffer is Full. Packet will be dropped.")
+	}
 }

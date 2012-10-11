@@ -58,7 +58,6 @@ func (um *UserManager) NewUser(id string) *User {
 		um:      um,
 		conns:   make(map[*Connection]bool),
 		noConns: make(chan bool),
-		log_id:  make(chan int64),
 	}
 	return um.users[id]
 }
@@ -90,9 +89,14 @@ func (um *UserManager) run() {
 				}
 			}
 		case m := <-um.broadcast:
+			cnt := 0
 			for c := range m.user.conns {
-				go c.Send(m.packet)
+				if c != m.conn {
+					go c.Send(m.packet)
+					cnt++
+				}
 			}
+			logger.Printf("[%s] broadcast to %d clients\n", m.user.Id, cnt)
 		}
 	}
 }
@@ -116,21 +120,14 @@ func (u *User) GetLogs() []*common.IRCLog {
 	return []*common.IRCLog{common.TestLog}
 }
 
-func (u *User) Send(packet *Packet) {
-	manager.user.broadcast <- &UserMessage{user: u, packet: packet}
+func (u *User) Send(packet *Packet, conn *Connection) {
+	manager.user.broadcast <- &UserMessage{user: u, packet: packet, conn: conn}
 }
 
 func (u *User) PushLogTest() {
 	tick := time.Tick(1 * time.Second)
-	go func() {
-		log_id := int64(0)
-		for {
-			select {
-			case u.log_id <- log_id:
-				log_id++
-			}
-		}
-	}()
+	log_id := int64(0)
+	u.log_id = make(chan int64, 100)
 	for {
 		select {
 		case t := <-tick:
@@ -143,12 +140,14 @@ func (u *User) PushLogTest() {
 				From:      "irctalk",
 				Message:   fmt.Sprintf("test push message #%d", i),
 			}
-			packet := &Packet{Cmd: "pushLogs", RawData: make(map[string]interface{})}
-			packet.RawData["logs"] = []*common.IRCLog{irclog}
+			packet := &Packet{Cmd: "pushLog", RawData: map[string]interface{}{"log": irclog}}
 			logger.Printf("%+v\n", *packet)
-			u.Send(packet)
+			u.Send(packet, nil)
+		case u.log_id <- log_id:
+			log_id++
 		case <-u.noConns:
 			logger.Println("There is No Connection.")
+			close(u.log_id)
 			return
 		}
 	}
@@ -157,4 +156,5 @@ func (u *User) PushLogTest() {
 type UserMessage struct {
 	user   *User
 	packet *Packet
+	conn   *Connection
 }
