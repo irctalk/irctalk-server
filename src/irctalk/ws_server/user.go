@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"irctalk/common"
 	"sync"
 	"time"
-	"irctalk/common"
 )
 
 // Errors
@@ -53,7 +53,13 @@ func (um *UserManager) NewUser(id string) *User {
 	if _, exist := um.users[id]; exist {
 		return nil
 	}
-	um.users[id] = &User{Id: id, um: um, conns: make(map[*Connection]bool), noConns: make(chan bool)}
+	um.users[id] = &User{
+		Id:      id,
+		um:      um,
+		conns:   make(map[*Connection]bool),
+		noConns: make(chan bool),
+		log_id:  make(chan int64),
+	}
 	return um.users[id]
 }
 
@@ -97,6 +103,9 @@ type User struct {
 	um      *UserManager
 	conns   map[*Connection]bool
 	noConns chan bool
+
+	// for test
+	log_id chan int64
 }
 
 func (u *User) GetServers() []*common.IRCServerInfo {
@@ -113,11 +122,22 @@ func (u *User) Send(packet *Packet) {
 
 func (u *User) PushLogTest() {
 	tick := time.Tick(1 * time.Second)
-	for i := int64(0); ; i++ {
+	go func() {
+		log_id := int64(0)
+		for {
+			select {
+			case u.log_id <- log_id:
+				log_id++
+			}
+		}
+	}()
+	for {
 		select {
 		case t := <-tick:
+			i := <-u.log_id
 			irclog := &common.IRCLog{
 				Log_id:    i,
+				Server_id: 0,
 				Timestamp: common.UnixMilli(t),
 				Channel:   "#test",
 				From:      "irctalk",

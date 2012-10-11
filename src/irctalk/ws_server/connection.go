@@ -2,6 +2,8 @@ package main
 
 import (
 	"code.google.com/p/go.net/websocket"
+	"irctalk/common"
+	"time"
 )
 
 type Connection struct {
@@ -85,6 +87,19 @@ func MakeDefaultPacketHandler() *PacketMux {
 
 	h.HandleFunc("pushLogs", AuthUser(func(c *Connection, packet *Packet) {
 		logger.Printf("%+v\n", packet)
+	}))
+
+	h.HandleFunc("sendLog", AuthUser(func(c *Connection, packet *Packet) {
+		resp := packet.MakeResponse()
+		defer c.Send(resp)
+		resp.RawData["log"] = &common.IRCLog{
+			Log_id:    <-c.user.log_id,
+			Server_id: int(packet.RawData["server_id"].(float64)),
+			Timestamp: common.UnixMilli(time.Now()),
+			Channel:   packet.RawData["channel"].(string),
+			From:      "irctalk",
+			Message:   packet.RawData["message"].(string),
+		}
 	}))
 	return h
 }

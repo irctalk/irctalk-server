@@ -14,6 +14,11 @@ type Managers struct {
 	user       *UserManager
 }
 
+func (m *Managers) start() {
+	go manager.connection.run()
+	go manager.user.run()
+}
+
 var manager = &Managers{
 	connection: &ConnectionManager{
 		connections: make(map[*Connection]bool),
@@ -54,8 +59,7 @@ func wsHandler(ws *websocket.Conn) {
 }
 
 func main() {
-	go manager.connection.run()
-	go manager.user.run()
+	manager.start()
 	http.Handle("/", websocket.Handler(wsHandler))
 	err := http.ListenAndServe(":9001", nil)
 	if err != nil {
