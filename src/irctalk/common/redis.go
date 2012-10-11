@@ -1,4 +1,4 @@
-package main
+package common
 
 import (
 	//	redis "github.com/alphazero/Go-Redis"

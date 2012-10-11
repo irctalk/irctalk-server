@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"irctalk/common"
 )
 
 // Errors
@@ -98,12 +99,12 @@ type User struct {
 	noConns chan bool
 }
 
-func (u *User) GetServers() []*IRCServerInfo {
-	return []*IRCServerInfo{TestServerInfo}
+func (u *User) GetServers() []*common.IRCServerInfo {
+	return []*common.IRCServerInfo{common.TestServerInfo}
 }
 
-func (u *User) GetLogs() []*IRCLog {
-	return []*IRCLog{TestLog}
+func (u *User) GetLogs() []*common.IRCLog {
+	return []*common.IRCLog{common.TestLog}
 }
 
 func (u *User) Send(packet *Packet) {
@@ -115,15 +116,15 @@ func (u *User) PushLogTest() {
 	for i := int64(0); ; i++ {
 		select {
 		case t := <-tick:
-			irclog := &IRCLog{
+			irclog := &common.IRCLog{
 				Log_id:    i,
-				Timestamp: UnixMilli(t),
+				Timestamp: common.UnixMilli(t),
 				Channel:   "#test",
 				From:      "irctalk",
 				Message:   fmt.Sprintf("test push message #%d", i),
 			}
 			packet := &Packet{Cmd: "pushLogs", RawData: make(map[string]interface{})}
-			packet.RawData["logs"] = []*IRCLog{irclog}
+			packet.RawData["logs"] = []*common.IRCLog{irclog}
 			logger.Printf("%+v\n", *packet)
 			u.Send(packet)
 		case <-u.noConns:
