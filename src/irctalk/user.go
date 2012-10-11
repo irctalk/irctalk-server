@@ -72,6 +72,9 @@ func (um *UserManager) run() {
 		select {
 		case c := <-um.register:
 			c.user.conns[c] = true
+			if len(c.user.conns) == 1 {
+				go c.user.PushLogTest()
+			}
 		case c := <-um.unregister:
 			if c.user != nil {
 				delete(c.user.conns, c)

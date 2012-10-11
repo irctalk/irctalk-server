@@ -66,19 +66,12 @@ func MakeDefaultPacketHandler() *PacketMux {
 		// add connection to user
 		manager.user.register <- c
 
-		// test log push
-		go user.PushLogTest()
 		logger.Printf("%+v\n", user)
 	})
 
 	h.HandleFunc("getServers", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		if c.user == nil {
-			resp.Status = -403
-			resp.Msg = "No Authorized. Register First"
-			return
-		}
 		resp.RawData["servers"] = c.user.GetServers()
 		logger.Printf("%+v\n", resp)
 	}))
@@ -86,11 +79,6 @@ func MakeDefaultPacketHandler() *PacketMux {
 	h.HandleFunc("getLogs", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		if c.user == nil {
-			resp.Status = -403
-			resp.Msg = "No Authorized. Register First"
-			return
-		}
 		resp.RawData["logs"] = c.user.GetLogs()
 		logger.Printf("%+v\n", resp)
 	}))
