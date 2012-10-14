@@ -163,7 +163,6 @@ func (u *User) ChannelKey() string {
 }
 
 func (u *User) ServerKey() string {
-	logger.Println(u.Id)
 	return fmt.Sprintf("Servers:%s", u.Id)
 }
 
@@ -269,7 +268,6 @@ func (u *User) GetPastLogs(last_log_id, numLogs, serverid int, channel string) (
 	defer manager.redis.Put(r)
 
 	//key := fmt.Sprintf("log:%s:%d:%s", u.Id, serverid, channel)
-
 
 	return nil, nil
 }

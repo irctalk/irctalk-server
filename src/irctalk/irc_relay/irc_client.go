@@ -185,6 +185,7 @@ func (c *IRCClient) Connect() {
 func (c *IRCClient) SendLog(target, message string) {
 	// write to redis for logging
 	c.conn.Privmsg(target, message)
+	c.WriteChatLog(time.Now(), c.serverInfo.User.Nickname, target, message)
 }
 
 func (c *IRCClient) AddChannel(channel string) {

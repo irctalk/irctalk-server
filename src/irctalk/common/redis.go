@@ -40,6 +40,7 @@ func Convert(raw [][]byte) map[string]string {
 			key = string(v)
 		} else {
 			result[key] = string(v)
+			key = ""
 		}
 	}
 	return result

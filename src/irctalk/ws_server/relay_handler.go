@@ -13,10 +13,13 @@ func InitHandler(z *common.ZmqMessenger) {
 		if err != nil {
 			return
 		}
-
+		logid := int64(msg.Params["log"].(map[string]interface{})["log_id"].(float64))
+		timestamp := int64(msg.Params["log"].(map[string]interface{})["timestamp"].(float64))
 		var irclog common.IRCLog
 		common.Import(msg.Params["log"], &irclog)
 
+		irclog.Timestamp = timestamp
+		irclog.Log_id = logid
 		logger.Printf("Msg Recv: %+v\n", irclog)
 		packet := &Packet{Cmd: "pushLog", RawData: map[string]interface{}{"log": irclog}}
 		user.Send(packet, nil)

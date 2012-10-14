@@ -109,7 +109,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		c.user.RLock()
 		defer c.user.RUnlock()
 		serverid := int(packet.RawData["server_id"].(float64))
-		server, ok := c.user.servers[serverid];
+		server, ok := c.user.servers[serverid]
 		if !ok || !server.Active {
 			logger.Println("SendLog failed. server is not connected")
 			resp.Status = -500
