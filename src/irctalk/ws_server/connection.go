@@ -79,10 +79,22 @@ func MakeDefaultPacketHandler() *PacketMux {
 		logger.Printf("%+v\n", resp)
 	}))
 
-	h.HandleFunc("getLogs", AuthUser(func(c *Connection, packet *Packet) {
+	h.HandleFunc("getInitLogs", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		resp.RawData["logs"] = c.user.GetLogs()
+		numLogs := 30
+		_numLogs, ok := packet.RawData["log_count"]
+		if ok {
+			numLogs = int(_numLogs.(float64))
+		}
+		logs, err := c.user.GetInitLogs(numLogs)
+		if err != nil {
+			logger.Printf("getInitLog Error :", err)
+			resp.Status = -500
+			resp.Msg = err.Error()
+			return
+		}
+		resp.RawData["logs"] = logs
 		logger.Printf("%+v\n", resp)
 	}))
 
@@ -93,19 +105,41 @@ func MakeDefaultPacketHandler() *PacketMux {
 	h.HandleFunc("sendLog", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		irclog := &common.IRCLog{
-			Log_id:    <-c.user.log_id,
+		irclog := common.IRCLog{
+			Log_id:    c.user.GetLogId(),
 			Server_id: int(packet.RawData["server_id"].(float64)),
 			Timestamp: common.UnixMilli(time.Now()),
 			Channel:   packet.RawData["channel"].(string),
 			From:      "irctalk",
 			Message:   packet.RawData["message"].(string),
 		}
-
+		c.user.SendChatMsg(irclog.Server_id, irclog.Channel, irclog.Message)
 		resp.RawData["log"] = irclog
 		push := &Packet{Cmd: "pushLog", RawData: map[string]interface{}{"log": irclog}}
 		c.user.Send(push, c)
 	}))
+
+	h.HandleFunc("addServer", AuthUser(func(c *Connection, packet *Packet) {
+		resp := packet.MakeResponse()
+		defer c.Send(resp)
+		var server common.IRCServer
+		common.Import(packet.RawData["server"], &server)
+		ret, err := c.user.AddServer(&server)
+		if err != nil {
+			logger.Println("AddServer Error :", err)
+			resp.Status = -500
+			resp.Msg = err.Error()
+			return
+		}
+		resp.RawData["server"] = ret
+	}))
+
+	h.HandleFunc("addChannel", AuthUser(func(c *Connection, packet *Packet) {
+		serverid := int(packet.RawData["server_id"].(float64))
+		channel := packet.RawData["channel"].(string)
+		c.user.AddChannelMsg(serverid, channel)
+	}))
+
 	return h
 }
 
@@ -167,7 +201,7 @@ STOP:
 func (c *Connection) writer() {
 	for packet := range c.send {
 		logger.Println("try to write packet")
-		c.ws.SetWriteDeadline(time.Now().Add(10*time.Second))
+		c.ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		err := websocket.JSON.Send(c.ws, packet)
 		if err != nil {
 			logger.Println("Write error: ", err)

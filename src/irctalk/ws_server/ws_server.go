@@ -2,6 +2,7 @@ package main
 
 import (
 	"code.google.com/p/go.net/websocket"
+	"irctalk/common"
 	"log"
 	"net/http"
 	"os"
@@ -12,11 +13,15 @@ var logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
 type Managers struct {
 	connection *ConnectionManager
 	user       *UserManager
+	zmq        *common.ZmqMessenger
+	redis      *common.RedisConnectionPool
 }
 
 func (m *Managers) start() {
-	go manager.connection.run()
-	go manager.user.run()
+	InitHandler(m.zmq)
+	go m.zmq.Start()
+	go m.connection.run()
+	go m.user.run()
 }
 
 var manager = &Managers{
@@ -32,6 +37,8 @@ var manager = &Managers{
 		unregister: make(chan *Connection),
 		broadcast:  make(chan *UserMessage, 256),
 	},
+	zmq:   common.NewZmqMessenger("tcp://127.0.0.1:9100", "tcp://127.0.0.1:9200", 4),
+	redis: common.NewRedisConnectionPool("localhost", 9002, 16),
 }
 
 type Packet struct {

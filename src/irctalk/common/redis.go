@@ -1,51 +1,46 @@
 package common
 
 import (
-	//	redis "github.com/alphazero/Go-Redis"
+	redis "github.com/alphazero/Go-Redis"
 	//	"fmt"
-	"encoding/json"
 )
 
-// temporary type
-type RedisConnection interface{}
-type RedisConnector struct {
-	write chan RedisWriter
-	read  chan RedisReader
+type RedisConnectionPool struct {
+	spec *redis.ConnectionSpec
+	Conn chan redis.Client
 }
 
-func (r *RedisConnector) Worker() {
-	// make connection
-	for {
+func NewRedisConnectionPool(host string, port, numConns int) *RedisConnectionPool {
+	spec := redis.DefaultSpec().Host(host).Port(port)
+	pool := &RedisConnectionPool {
+		spec: spec,
+		Conn: make(chan redis.Client, numConns),
 	}
-}
-
-type RedisObject interface {
-	GetRedisKey() string
-}
-
-type RedisWriter interface {
-	Write(*RedisConnection)
-}
-
-type RedisReader interface {
-	Read(*RedisConnection)
-}
-
-type JSONWriter struct {
-	key   string
-	value []byte
-}
-
-func (w *JSONWriter) Write(r *RedisConnection) {
-}
-
-func WriteRedis(v RedisObject) {
-	WriteRedisWithKey(v.GetRedisKey(), v)
-}
-
-func WriteRedisWithKey(key string, v interface{}) {
-	value, err := json.Marshal(v)
-	if err != nil {
+	for i := 0; i < numConns; i++ {
+		conn, _ := redis.NewSynchClientWithSpec(pool.spec)
+		pool.Conn <- conn
 	}
-	_ = &JSONWriter{key: key, value: value}
+	return pool
+}
+
+func (pool *RedisConnectionPool) Get() (conn redis.Client) {
+	conn = <- pool.Conn
+	return
+}
+
+func (pool *RedisConnectionPool) Put(conn redis.Client) {
+	pool.Conn <- conn
+}
+
+func Convert(raw [][]byte) map[string]string {
+	result := make(map[string]string)
+	var key string
+	for _, v := range raw {
+		if key == "" {
+			key = string(v)
+		} else {
+			result[key] = string(v)
+		}
+	}
+	return result
 }

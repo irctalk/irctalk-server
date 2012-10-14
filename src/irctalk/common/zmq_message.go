@@ -4,6 +4,7 @@ import (
 	zmq "github.com/alecthomas/gozmq"
 	"encoding/json"
 	"log"
+	"fmt"
 )
 
 type ZmqMsg struct {
@@ -11,6 +12,10 @@ type ZmqMsg struct {
 	UserId   string
 	ServerId int
 	Params   map[string]interface{}
+}
+
+func (z *ZmqMsg) GetClientId() string {
+	return fmt.Sprintf("%s#%d", z.UserId, z.ServerId)
 }
 
 type ZmqMessenger struct {
@@ -58,9 +63,10 @@ func (zm *ZmqMessenger) Start() {
 	go func() {
 		for {
 			msg, _ := zm.sock_pull.Recv(0)
-			var zmq_msg *ZmqMsg
-			json.Unmarshal(msg, zmq_msg)
-			zm.Recv <- zmq_msg
+			var zmq_msg ZmqMsg
+			json.Unmarshal(msg, &zmq_msg)
+			log.Printf("%+v\n", zmq_msg)
+			zm.Recv <- &zmq_msg
 		}
 	}()
 	// start sender
