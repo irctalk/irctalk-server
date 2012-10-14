@@ -144,6 +144,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 			return
 		}
 		resp.RawData["server"] = ret
+		c.user.Send(resp, c)
 	}))
 
 	h.HandleFunc("addChannel", AuthUser(func(c *Connection, packet *Packet) {

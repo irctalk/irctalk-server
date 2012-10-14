@@ -98,7 +98,28 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 		if line.Nick == conn.Me.Nick {
 			// join channel by me
 		} else {
+			channel, ok := client.channels[line.Args[0]]
+			if !ok {
+				log.Println("Invalid Channel :", line.Args[0])
+				return
+			}
+			channel.JoinUser(line.Nick)
 		}
+	})
+
+	client.conn.AddHandler("PART", func(conn *irc.Conn, line *irc.Line) {
+		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s has left %s", line.Nick, line.Args[0]))
+
+		msg := client.MakeZmqMsg("CHAT")
+		msg.Params["log"] = ircLog
+		zmqMgr.Send <- msg
+
+		channel, ok := client.channels[line.Args[0]]
+		if !ok {
+			log.Println("Invalid Channel :", line.Args[0])
+			return
+		}
+		channel.PartUser(line.Nick)
 	})
 
 	client.conn.AddHandler("332", func(conn *irc.Conn, line *irc.Line) {
