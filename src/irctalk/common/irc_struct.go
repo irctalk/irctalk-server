@@ -30,7 +30,7 @@ type IRCChannel struct {
 	Server_id int     `json:"server_id"`
 	Name      string  `json:"channel"`
 	Topic     string  `json:"topic"`
-	UserCount int     `json:"user_count"`
+	Members	  []string `json:"members"`
 	Last_log  *IRCLog `json:"last_log"`
 }
 
@@ -51,39 +51,4 @@ type IRCServer struct {
 	Server   *IRCServerInfo `json:"server"`
 	User     *IRCUser       `json:"user"`
 	Active	 bool			`json:"active"`
-}
-
-var TestUser = &IRCUser{
-	Nickname: "Hyunggi",
-	Realname: "Hyunggi",
-}
-
-var TestLog = &IRCLog{
-	Log_id:    1,
-	Timestamp: UnixMilli(time.Now()),
-	Server_id: 0,
-	Channel:   "#hackfair",
-	From:      "Hyunggi",
-	Message:   "모닝",
-}
-
-var TestChannel = &IRCChannel{
-	Server_id: 0,
-	Name:      "#hackfair",
-	Topic:     "호옹이",
-	UserCount: 3,
-	Last_log:  TestLog,
-}
-
-var TestServer = &IRCServerInfo{
-	Host: "irc.uriirc.org",
-	Port: 16661,
-	SSL:  true,
-}
-
-var TestServerInfo = &IRCServer{
-	Id:       0,
-	Name:     "UriIRC",
-	Server:   TestServer,
-	User:     TestUser,
 }

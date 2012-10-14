@@ -76,6 +76,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
 		resp.RawData["servers"] = c.user.GetServers()
+		resp.RawData["channels"] = c.user.GetChannels()
 		logger.Printf("%+v\n", resp)
 	}))
 
@@ -105,15 +106,26 @@ func MakeDefaultPacketHandler() *PacketMux {
 	h.HandleFunc("sendLog", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
+		c.user.RLock()
+		defer c.user.RUnlock()
+		serverid := int(packet.RawData["server_id"].(float64))
+
+		if server, ok := c.user.servers[serverid]; !ok || !server.Active {
+			logger.Println("SendLog failed. server is not connected")
+			resp.Status = -500
+			resp.Msg = "Server is not connected"
+			return
+		}
+
 		irclog := common.IRCLog{
 			Log_id:    c.user.GetLogId(),
-			Server_id: int(packet.RawData["server_id"].(float64)),
+			Server_id: serverid,
 			Timestamp: common.UnixMilli(time.Now()),
 			Channel:   packet.RawData["channel"].(string),
 			From:      "irctalk",
 			Message:   packet.RawData["message"].(string),
 		}
-		c.user.SendChatMsg(irclog.Server_id, irclog.Channel, irclog.Message)
+		c.user.SendChatMsg(serverid, irclog.Channel, irclog.Message)
 		resp.RawData["log"] = irclog
 		push := &Packet{Cmd: "pushLog", RawData: map[string]interface{}{"log": irclog}}
 		c.user.Send(push, c)
