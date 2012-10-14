@@ -109,8 +109,8 @@ func MakeDefaultPacketHandler() *PacketMux {
 		c.user.RLock()
 		defer c.user.RUnlock()
 		serverid := int(packet.RawData["server_id"].(float64))
-
-		if server, ok := c.user.servers[serverid]; !ok || !server.Active {
+		server, ok := c.user.servers[serverid];
+		if !ok || !server.Active {
 			logger.Println("SendLog failed. server is not connected")
 			resp.Status = -500
 			resp.Msg = "Server is not connected"
@@ -122,7 +122,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 			Server_id: serverid,
 			Timestamp: common.UnixMilli(time.Now()),
 			Channel:   packet.RawData["channel"].(string),
-			From:      "irctalk",
+			From:      server.User.Nickname,
 			Message:   packet.RawData["message"].(string),
 		}
 		c.user.SendChatMsg(serverid, irclog.Channel, irclog.Message)

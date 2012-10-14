@@ -19,7 +19,7 @@ func (c *Channel) ChannelKey() string {
 	return fmt.Sprintf("channel:%s:%d:%s", c.userId, c.serverId, c.name)
 }
 
-func (c *Channel) WriteChannelInfo() {
+func (c *Channel) WriteChannelInfo() *common.IRCChannel {
 	r := redisPool.Get()
 	defer redisPool.Put(r)
 
@@ -35,6 +35,7 @@ func (c *Channel) WriteChannelInfo() {
 
 	data, _ := json.Marshal(channel)
 	r.Set(c.ChannelKey(), data)
+	return channel
 }
 
 func (c *Channel) NickChange(from, to string) bool {

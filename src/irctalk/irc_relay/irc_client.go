@@ -58,6 +58,7 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 		serverInfo: &serverInfo,
 		conn:       irc.SimpleClient(serverInfo.User.Nickname, ident, serverInfo.User.Realname),
 		channels:   make(map[string]*Channel),
+		active:     true,
 	}
 	client.conn.SSL = serverInfo.Server.SSL
 	client.conn.SSLConfig = &tls.Config{
@@ -133,10 +134,10 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 			log.Println("Invalid Channel :", line.Args[1])
 			return
 		}
-		channel.WriteChannelInfo()
+		_channel := channel.WriteChannelInfo()
 		if client.active {
 			msg := client.MakeZmqMsg("ADD_CHANNEL")
-			msg.Params["channel"] = channel
+			msg.Params["channel"] = _channel
 			zmqMgr.Send <- msg
 		}
 	})
@@ -179,7 +180,7 @@ func (c *IRCClient) MakeZmqMsg(cmd string) *common.ZmqMsg {
 	return &common.ZmqMsg{
 		Cmd:      cmd,
 		UserId:   c.UserId,
-		ServerId: 0,
+		ServerId: c.ServerId,
 		Params:   make(map[string]interface{}),
 	}
 }
@@ -205,8 +206,9 @@ func (c *IRCClient) AddChannel(channel string) {
 	}
 
 	r := redisPool.Get()
-	defer redisPool.Put(r)
 	r.Hset(c.ChannelKey(), c.channels[channel].ChannelKey(), []byte(strconv.Itoa(c.ServerId)))
+	redisPool.Put(r)
+	c.channels[channel].WriteChannelInfo()
 
 	c.channels[channel].joined = c.conn.Connected
 	if c.conn.Connected {

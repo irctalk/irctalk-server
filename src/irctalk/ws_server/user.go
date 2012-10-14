@@ -339,9 +339,12 @@ func (u *User) ChangeServerActive(serverid int, active bool) {
 		logger.Println("Server not found :", serverid)
 		return
 	}
+
+	logger.Println("Current State:", server.Active, active)
 	if server.Active == active {
-		return
 	}
+
+	server.Active = active
 
 	packet := &Packet{
 		Cmd:     "serverActive",
