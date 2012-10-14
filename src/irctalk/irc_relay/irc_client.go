@@ -122,7 +122,7 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 			log.Println("Invalid Channel :", line.Args[2])
 			return
 		}
-		for _, v := range line.Args[3:] {
+		for _, v := range strings.Split(line.Args[3], " ") {
 			nick := strings.Trim(v, "@+ ")
 			channel.members[nick] = true
 		}

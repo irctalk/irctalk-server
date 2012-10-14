@@ -219,14 +219,13 @@ func (u *User) GetChannels() (channels []*common.IRCChannel) {
 
 	result := common.Convert(value)
 	for k, _ := range result {
-		value, err := r.Hgetall(k)
+		value, err := r.Get(k)
 		if err != nil {
 			logger.Println("GetChannels Error : ", err)
 			return
 		}
-		m := common.Convert(value)
 		var channel common.IRCChannel
-		common.Import(m, &channel)
+		json.Unmarshal(value, &channel)
 		channels = append(channels, &channel)
 	}
 	return
@@ -281,7 +280,8 @@ func (u *User) GetPastLogs(last_log_id, numLogs, serverid int, channel string) (
 	r := manager.redis.Get()
 	defer manager.redis.Put(r)
 
-	//	key := fmt.Sprintf("log:%s:%s:%s", u.Id, serverid, channel)
+	key := fmt.Sprintf("log:%s:%d:%s", u.Id, serverid, channel)
+
 
 	return nil, nil
 }
@@ -300,7 +300,7 @@ func (u *User) GetInitLogs(numLogs int) ([]*common.IRCLog, error) {
 
 	logs := make([]*common.IRCLog, 0)
 	for k, v := range result {
-		channel := strings.Split(k, "@")[0]
+		channel := strings.Split(k, ":")[3]
 		key := fmt.Sprintf("log:%s:%s:%s", u.Id, v, channel)
 		result, err := r.Lrange(key, 0, int64(numLogs))
 		if err != nil {
