@@ -9,9 +9,8 @@ import (
 
 func InitHandler(z *common.ZmqMessenger) {
 	z.HandleFunc("CHAT", func(msg *common.ZmqMsg) {
-		user, err := manager.user.GetUserById(msg.UserId)
+		user, err := manager.user.GetConnectedUser(msg.UserId)
 		if err != nil {
-			logger.Println("[ZMQMSG]CHAT ERROR:", err)
 			return
 		}
 
@@ -24,7 +23,7 @@ func InitHandler(z *common.ZmqMessenger) {
 	})
 
 	z.HandleFunc("SERVER_STATUS", func(msg *common.ZmqMsg) {
-		user, err := manager.user.GetUserById(msg.UserId)
+		user, err := manager.user.GetConnectedUser(msg.UserId)
 		if err != nil {
 			logger.Println("[ZMQMSG]SERVER_STATUS ERROR:", err)
 			return
@@ -34,7 +33,7 @@ func InitHandler(z *common.ZmqMessenger) {
 	})
 
 	z.HandleFunc("ADD_CHANNEL", func(msg *common.ZmqMsg) {
-		user, err := manager.user.GetUserById(msg.UserId)
+		user, err := manager.user.GetConnectedUser(msg.UserId)
 		if err != nil {
 			logger.Println("[ZMQMSG]SERVER_STATUS ERROR:", err)
 			return

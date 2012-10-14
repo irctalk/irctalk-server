@@ -32,12 +32,6 @@ func InitHandler() {
 		c := ircMgr.GetClient(msg)
 		c.SendLog(msg.Params["target"].(string), msg.Params["message"].(string))
 	})
-
-	zmqMgr.HandleFunc("USER_ACTIVE", func(msg *common.ZmqMsg) {
-		log.Println(msg)
-		c := ircMgr.GetClient(msg)
-		c.SetActive(msg.Params["active"].(bool))
-	})
 }
 
 func main() {

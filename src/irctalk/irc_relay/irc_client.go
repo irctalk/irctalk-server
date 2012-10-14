@@ -43,7 +43,6 @@ type IRCClient struct {
 	serverInfo *common.IRCServer
 	conn       *irc.Conn
 	channels   map[string]*Channel
-	active     bool
 }
 
 func NewClient(info *common.ZmqMsg) *IRCClient {
@@ -58,7 +57,6 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 		serverInfo: &serverInfo,
 		conn:       irc.SimpleClient(serverInfo.User.Nickname, ident, serverInfo.User.Realname),
 		channels:   make(map[string]*Channel),
-		active:     true,
 	}
 	client.conn.SSL = serverInfo.Server.SSL
 	client.conn.SSLConfig = &tls.Config{
@@ -73,22 +71,18 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 			}
 		}
 
-		if client.active {
-			msg := client.MakeZmqMsg("SERVER_STATUS")
-			msg.Params["active"] = true
-			zmqMgr.Send <- msg
-		}
+		msg := client.MakeZmqMsg("SERVER_STATUS")
+		msg.Params["active"] = true
+		zmqMgr.Send <- msg
 
 		client.serverInfo.Active = true
 		client.WriteServerInfo()
 	})
 
 	client.conn.AddHandler("disconnected", func(conn *irc.Conn, line *irc.Line) {
-		if client.active {
-			msg := client.MakeZmqMsg("SERVER_STATUS")
-			msg.Params["active"] = false
-			zmqMgr.Send <- msg
-		}
+		msg := client.MakeZmqMsg("SERVER_STATUS")
+		msg.Params["active"] = false
+		zmqMgr.Send <- msg
 
 		client.serverInfo.Active = false
 		client.WriteServerInfo()
@@ -96,11 +90,11 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 
 	client.conn.AddHandler("JOIN", func(conn *irc.Conn, line *irc.Line) {
 		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s has joined %s", line.Nick, line.Args[0]))
-		if client.active {
-			msg := client.MakeZmqMsg("CHAT")
-			msg.Params["log"] = ircLog
-			zmqMgr.Send <- msg
-		}
+
+		msg := client.MakeZmqMsg("CHAT")
+		msg.Params["log"] = ircLog
+		zmqMgr.Send <- msg
+
 		if line.Nick == conn.Me.Nick {
 			// join channel by me
 		} else {
@@ -135,11 +129,10 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 			return
 		}
 		_channel := channel.WriteChannelInfo()
-		if client.active {
-			msg := client.MakeZmqMsg("ADD_CHANNEL")
-			msg.Params["channel"] = _channel
-			zmqMgr.Send <- msg
-		}
+
+		msg := client.MakeZmqMsg("ADD_CHANNEL")
+		msg.Params["channel"] = _channel
+		zmqMgr.Send <- msg
 	})
 
 	client.conn.AddHandler("NICK", func(conn *irc.Conn, line *irc.Line) {
@@ -151,11 +144,10 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 			if channel.NickChange(line.Nick, line.Args[0]) {
 				message := fmt.Sprintf("%s is now known as %s", line.Nick, line.Args[0])
 				ircLog := client.WriteChatLog(line.Time, "", channel.name, message)
-				if client.active {
-					msg := client.MakeZmqMsg("CHAT")
-					msg.Params["log"] = ircLog
-					zmqMgr.Send <- msg
-				}
+
+				msg := client.MakeZmqMsg("CHAT")
+				msg.Params["log"] = ircLog
+				zmqMgr.Send <- msg
 			}
 		}
 	})
@@ -166,11 +158,9 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 			// write log to redis
 			ircLog := client.WriteChatLog(line.Time, line.Nick, line.Args[0], line.Args[1])
 
-			if client.active {
-				msg := client.MakeZmqMsg("CHAT")
-				msg.Params["log"] = ircLog
-				zmqMgr.Send <- msg
-			}
+			msg := client.MakeZmqMsg("CHAT")
+			msg.Params["log"] = ircLog
+			zmqMgr.Send <- msg
 		}
 	})
 	return client
@@ -214,10 +204,6 @@ func (c *IRCClient) AddChannel(channel string) {
 	if c.conn.Connected {
 		c.conn.Join(channel)
 	}
-}
-
-func (c *IRCClient) SetActive(active bool) {
-	c.active = active
 }
 
 func (c *IRCClient) GetLogId() int64 {

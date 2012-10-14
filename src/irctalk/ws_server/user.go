@@ -51,6 +51,17 @@ func (um *UserManager) GetUserByKey(key string) (*User, error) {
 	return um.GetUserById(string(id))
 }
 
+func (um *UserManager) GetConnectedUser(id string) (*User, error) {
+	um.RLock()
+	defer um.RUnlock()
+
+	user, ok := um.users[id]
+	if !ok {
+		return nil, &UserNotFound{id: id}
+	}
+	return user, nil
+}
+
 func (um *UserManager) GetUserById(id string) (*User, error) {
 	um.RLock()
 	user, ok := um.users[id]
@@ -115,39 +126,16 @@ func (um *UserManager) run() {
 	for {
 		select {
 		case c := <-um.register:
+			um.Lock()
 			c.user.conns[c] = true
-			if len(c.user.conns) == 1 {
-				// set user active
-				_msg := common.ZmqMsg{
-					Cmd:    "USER_ACTIVE",
-					UserId: c.user.Id,
-					Params: map[string]interface{}{"active": true},
-				}
-				for k, _ := range c.user.servers {
-					msg := _msg
-					msg.ServerId = k
-					manager.zmq.Send <- &msg
-				}
-			}
+			um.Unlock()
 		case c := <-um.unregister:
 			if c.user != nil {
 				delete(c.user.conns, c)
 				if len(c.user.conns) == 0 {
-					// set user deactive
 					um.Lock()
 					delete(um.users, c.user.Id)
 					um.Unlock()
-
-					_msg := common.ZmqMsg{
-						Cmd:    "USER_ACTIVE",
-						UserId: c.user.Id,
-						Params: map[string]interface{}{"active": false},
-					}
-					for k, _ := range c.user.servers {
-						msg := _msg
-						msg.ServerId = k
-						manager.zmq.Send <- &msg
-					}
 				}
 			}
 		case m := <-um.broadcast:
@@ -280,7 +268,7 @@ func (u *User) GetPastLogs(last_log_id, numLogs, serverid int, channel string) (
 	r := manager.redis.Get()
 	defer manager.redis.Put(r)
 
-	key := fmt.Sprintf("log:%s:%d:%s", u.Id, serverid, channel)
+	//key := fmt.Sprintf("log:%s:%d:%s", u.Id, serverid, channel)
 
 
 	return nil, nil
