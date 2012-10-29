@@ -12,7 +12,7 @@ type RedisConnectionPool struct {
 
 func NewRedisConnectionPool(host string, port, numConns int) *RedisConnectionPool {
 	spec := redis.DefaultSpec().Host(host).Port(port)
-	pool := &RedisConnectionPool {
+	pool := &RedisConnectionPool{
 		spec: spec,
 		Conn: make(chan redis.Client, numConns),
 	}
@@ -24,7 +24,7 @@ func NewRedisConnectionPool(host string, port, numConns int) *RedisConnectionPoo
 }
 
 func (pool *RedisConnectionPool) Get() (conn redis.Client) {
-	conn = <- pool.Conn
+	conn = <-pool.Conn
 	return
 }
 

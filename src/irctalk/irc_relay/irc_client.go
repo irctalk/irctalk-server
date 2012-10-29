@@ -45,20 +45,19 @@ type IRCClient struct {
 	channels   map[string]*Channel
 }
 
-func NewClient(info *common.ZmqMsg) *IRCClient {
-	var serverInfo common.IRCServer
-	common.Import(info.Params["serverinfo"], &serverInfo)
-	ident := fmt.Sprintf("%0X", crc32.ChecksumIEEE([]byte(info.UserId)))
+func NewClient(packet *common.ZmqMsg) *IRCClient {
+	info := packet.Body().(*common.ZmqAddServer).ServerInfo
+	ident := fmt.Sprintf("%0X", crc32.ChecksumIEEE([]byte(packet.UserId)))
 
 	client := &IRCClient{
-		Id:         info.GetClientId(),
-		UserId:     info.UserId,
-		ServerId:   serverInfo.Id,
-		serverInfo: &serverInfo,
-		conn:       irc.SimpleClient(serverInfo.User.Nickname, ident, serverInfo.User.Realname),
+		Id:         packet.GetClientId(),
+		UserId:     packet.UserId,
+		ServerId:   info.Id,
+		serverInfo: info,
+		conn:       irc.SimpleClient(info.User.Nickname, ident, info.User.Realname),
 		channels:   make(map[string]*Channel),
 	}
-	client.conn.SSL = serverInfo.Server.SSL
+	client.conn.SSL = info.Server.SSL
 	client.conn.SSLConfig = &tls.Config{
 		InsecureSkipVerify: true,
 	}
@@ -71,18 +70,14 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 			}
 		}
 
-		msg := client.MakeZmqMsg("SERVER_STATUS")
-		msg.Params["active"] = true
-		zmqMgr.Send <- msg
+		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqServerStatus{Active: true})
 
 		client.serverInfo.Active = true
 		client.WriteServerInfo()
 	})
 
 	client.conn.AddHandler("disconnected", func(conn *irc.Conn, line *irc.Line) {
-		msg := client.MakeZmqMsg("SERVER_STATUS")
-		msg.Params["active"] = false
-		zmqMgr.Send <- msg
+		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqServerStatus{Active: false})
 
 		client.serverInfo.Active = false
 		client.WriteServerInfo()
@@ -91,9 +86,7 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 	client.conn.AddHandler("JOIN", func(conn *irc.Conn, line *irc.Line) {
 		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s has joined %s", line.Nick, line.Args[0]))
 
-		msg := client.MakeZmqMsg("CHAT")
-		msg.Params["log"] = ircLog
-		zmqMgr.Send <- msg
+		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 
 		if line.Nick == conn.Me.Nick {
 			// join channel by me
@@ -110,9 +103,7 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 	client.conn.AddHandler("PART", func(conn *irc.Conn, line *irc.Line) {
 		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s has left %s", line.Nick, line.Args[0]))
 
-		msg := client.MakeZmqMsg("CHAT")
-		msg.Params["log"] = ircLog
-		zmqMgr.Send <- msg
+		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 
 		channel, ok := client.channels[line.Args[0]]
 		if !ok {
@@ -151,9 +142,7 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 		}
 		_channel := channel.WriteChannelInfo()
 
-		msg := client.MakeZmqMsg("ADD_CHANNEL")
-		msg.Params["channel"] = _channel
-		zmqMgr.Send <- msg
+		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqAddChannel{Channel: _channel})
 	})
 
 	client.conn.AddHandler("NICK", func(conn *irc.Conn, line *irc.Line) {
@@ -166,9 +155,7 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 				message := fmt.Sprintf("%s is now known as %s", line.Nick, line.Args[0])
 				ircLog := client.WriteChatLog(line.Time, "", channel.name, message)
 
-				msg := client.MakeZmqMsg("CHAT")
-				msg.Params["log"] = ircLog
-				zmqMgr.Send <- msg
+				zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 			}
 		}
 	})
@@ -179,21 +166,14 @@ func NewClient(info *common.ZmqMsg) *IRCClient {
 			// write log to redis
 			ircLog := client.WriteChatLog(line.Time, line.Nick, line.Args[0], line.Args[1])
 
-			msg := client.MakeZmqMsg("CHAT")
-			msg.Params["log"] = ircLog
-			zmqMgr.Send <- msg
+			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 		}
 	})
 	return client
 }
 
-func (c *IRCClient) MakeZmqMsg(cmd string) *common.ZmqMsg {
-	return &common.ZmqMsg{
-		Cmd:      cmd,
-		UserId:   c.UserId,
-		ServerId: c.ServerId,
-		Params:   make(map[string]interface{}),
-	}
+func (c *IRCClient) MakeZmqMsg(packet common.ZmqPacket) *common.ZmqMsg {
+	return common.MakeZmqMsg(c.UserId, c.ServerId, packet)
 }
 
 func (c *IRCClient) Connect() {

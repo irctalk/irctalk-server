@@ -237,30 +237,13 @@ func (u *User) AddServer(server *common.IRCServer) (*common.IRCServer, error) {
 
 	u.servers[server.Id] = server
 
-	msg := &common.ZmqMsg{
-		Cmd:      "ADD_SERVER",
-		UserId:   u.Id,
-		ServerId: server.Id,
-		Params: map[string]interface{}{
-			"serverinfo": server,
-		},
-	}
+	manager.zmq.Send <- common.MakeZmqMsg(u.Id, server.Id, common.ZmqAddServer{ServerInfo: server})
 
-	manager.zmq.Send <- msg
 	return server, nil
 }
 
 func (u *User) AddChannelMsg(serverid int, channel string) {
-	msg := &common.ZmqMsg{
-		Cmd:      "ADD_CHANNEL",
-		UserId:   u.Id,
-		ServerId: serverid,
-		Params: map[string]interface{}{
-			"channel": channel,
-		},
-	}
-
-	manager.zmq.Send <- msg
+	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverid, common.ZmqAddChannel{Channel: &common.IRCChannel{Name: channel}})
 }
 
 func (u *User) GetPastLogs(last_log_id, numLogs, serverid int, channel string) ([]*common.IRCLog, error) {
@@ -307,14 +290,8 @@ func (u *User) Send(packet *Packet, conn *Connection) {
 	manager.user.broadcast <- &UserMessage{user: u, packet: packet, conn: conn}
 }
 
-func (u *User) SendChatMsg(serverId int, target, message string) {
-	msg := &common.ZmqMsg{
-		Cmd:      "SEND_CHAT",
-		UserId:   u.Id,
-		ServerId: serverId,
-		Params:   map[string]interface{}{"target": target, "message": message},
-	}
-	manager.zmq.Send <- msg
+func (u *User) SendChatMsg(serverid int, target, message string) {
+	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverid, common.ZmqSendChat{Target: target, Message: message})
 }
 
 func (u *User) ChangeServerActive(serverid int, active bool) {

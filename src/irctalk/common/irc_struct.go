@@ -1,8 +1,8 @@
 package common
 
 import (
-	"time"
 	"encoding/json"
+	"time"
 )
 
 func UnixMilli(t time.Time) int64 {
@@ -27,11 +27,11 @@ type IRCLog struct {
 }
 
 type IRCChannel struct {
-	Server_id int     `json:"server_id"`
-	Name      string  `json:"channel"`
-	Topic     string  `json:"topic"`
-	Members	  []string `json:"members"`
-	Last_log  *IRCLog `json:"last_log"`
+	Server_id int      `json:"server_id"`
+	Name      string   `json:"channel"`
+	Topic     string   `json:"topic"`
+	Members   []string `json:"members"`
+	Last_log  *IRCLog  `json:"last_log"`
 }
 
 type IRCUser struct {
@@ -46,9 +46,9 @@ type IRCServerInfo struct {
 }
 
 type IRCServer struct {
-	Id       int            `json:"id"`
-	Name     string         `json:"name"`
-	Server   *IRCServerInfo `json:"server"`
-	User     *IRCUser       `json:"user"`
-	Active	 bool			`json:"active"`
+	Id     int            `json:"id"`
+	Name   string         `json:"name"`
+	Server *IRCServerInfo `json:"server"`
+	User   *IRCUser       `json:"user"`
+	Active bool           `json:"active"`
 }

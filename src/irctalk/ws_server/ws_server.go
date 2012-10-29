@@ -18,6 +18,7 @@ type Managers struct {
 }
 
 func (m *Managers) start() {
+	common.RegisterPacket()
 	InitHandler(m.zmq)
 	go m.zmq.Start()
 	go m.connection.run()

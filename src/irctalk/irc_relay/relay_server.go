@@ -22,19 +22,22 @@ func InitHandler() {
 	})
 
 	zmqMgr.HandleFunc("ADD_CHANNEL", func(msg *common.ZmqMsg) {
-		log.Println(msg)
+		packet := msg.Body().(*common.ZmqAddChannel)
+		log.Printf("%+v", packet)
 		c := ircMgr.GetClient(msg)
-		c.AddChannel(msg.Params["channel"].(string))
+		c.AddChannel(packet.Channel.Name)
 	})
 
 	zmqMgr.HandleFunc("SEND_CHAT", func(msg *common.ZmqMsg) {
+		packet := msg.Body().(*common.ZmqSendChat)
 		log.Println(msg)
 		c := ircMgr.GetClient(msg)
-		c.SendLog(msg.Params["target"].(string), msg.Params["message"].(string))
+		c.SendLog(packet.Target, packet.Message)
 	})
 }
 
 func main() {
+	common.RegisterPacket()
 	InitHandler()
 	go ircMgr.run()
 	zmqMgr.Start()
