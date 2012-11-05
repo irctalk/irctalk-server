@@ -47,7 +47,7 @@ type IRCClient struct {
 
 func NewClient(packet *common.ZmqMsg) *IRCClient {
 	info := packet.Body().(*common.ZmqAddServer).ServerInfo
-	ident := fmt.Sprintf("%0X", crc32.ChecksumIEEE([]byte(packet.UserId)))
+	ident := fmt.Sprintf("%0x", crc32.ChecksumIEEE([]byte(packet.UserId)))
 
 	client := &IRCClient{
 		Id:         packet.GetClientId(),

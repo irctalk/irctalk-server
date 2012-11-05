@@ -11,7 +11,6 @@ type Connection struct {
 	send        chan *Packet
 	user        *User
 	handler     PacketHandler
-	last_log_id int64
 	stoprecv    chan bool
 }
 

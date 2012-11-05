@@ -4,38 +4,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"irctalk/common"
+	"log"
 )
 
 type Channel struct {
 	joined   bool
-	userId   string
-	serverId int
-	name     string
 	members  map[string]bool
-	topic    string
+	info	 *common.IRCChannel
 }
 
-func (c *Channel) ChannelKey() string {
-	return fmt.Sprintf("channel:%s:%d:%s", c.userId, c.serverId, c.name)
-}
-
-func (c *Channel) WriteChannelInfo() *common.IRCChannel {
-	r := redisPool.Get()
-	defer redisPool.Put(r)
-
-	channel := &common.IRCChannel{
-		Server_id: c.serverId,
-		Name:      c.name,
-		Topic:     c.topic,
-		Members:   make([]string, 0),
-	}
-	for k, _ := range c.members {
-		channel.Members = append(channel.Members, k)
+func (c *Channel) WriteChannelInfo(memberChanged bool) *common.IRCChannel {
+	if memberChanged {
+		c.info.Members = make([]string, len(members))
+		i := 0
+		for nick, _ := range members {
+			info.Members[i] = nick
+			i++
+		}
 	}
 
-	data, _ := json.Marshal(channel)
-	r.Set(c.ChannelKey(), data)
-	return channel
+	if err := common.RedisSave(c.info); err != nil {
+		log.Println("WriteChannelInfo Error : ", err)
+	}
+
+	return c.info
 }
 
 func (c *Channel) NickChange(from, to string) bool {
@@ -43,7 +35,7 @@ func (c *Channel) NickChange(from, to string) bool {
 	if ok {
 		delete(c.members, from)
 		c.members[to] = true
-		c.WriteChannelInfo()
+		c.WriteChannelInfo(true)
 		return true
 	}
 	return false
@@ -51,15 +43,15 @@ func (c *Channel) NickChange(from, to string) bool {
 
 func (c *Channel) JoinUser(nick string) {
 	c.members[nick] = true
-	c.WriteChannelInfo()
+	c.WriteChannelInfo(true)
 }
 
 func (c *Channel) PartUser(nick string) {
 	delete(c.members, nick)
-	c.WriteChannelInfo()
+	c.WriteChannelInfo(true)
 }
 
 func (c *Channel) SetTopic(topic string) {
 	c.topic = topic
-	c.WriteChannelInfo()
+	c.WriteChannelInfo(false)
 }

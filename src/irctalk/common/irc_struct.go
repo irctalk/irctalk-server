@@ -1,7 +1,8 @@
 package common
 
 import (
-	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -9,29 +10,24 @@ func UnixMilli(t time.Time) int64 {
 	return t.UnixNano() / 1000000
 }
 
-func Import(raw interface{}, v interface{}) error {
-	b, err := json.Marshal(raw)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(b, v)
-}
-
 type IRCLog struct {
-	Log_id    int64  `json:"log_id"`
+	LogId     int64  `json:"log_id"`
+	UserId    string `json:"-"`
 	Timestamp int64  `json:"timestamp"`
-	Server_id int    `json:"server_id"`
+	ServerId  int    `json:"server_id"`
 	Channel   string `json:"channel"`
 	From      string `json:"from,omitempty"`
 	Message   string `json:"message"`
 }
 
 type IRCChannel struct {
-	Server_id int      `json:"server_id"`
-	Name      string   `json:"channel"`
-	Topic     string   `json:"topic"`
-	Members   []string `json:"members"`
-	Last_log  *IRCLog  `json:"last_log"`
+	UserId   string   `json:"-"`
+	ServerId int      `json:"server_id"`
+	Name     string   `json:"channel"`
+	Topic    string   `json:"topic"`
+	Members  []string `json:"members"`
+	Joined   bool     `json:"joined"`
+	LastLog  *IRCLog  `json:"last_log"`
 }
 
 type IRCUser struct {
@@ -46,9 +42,92 @@ type IRCServerInfo struct {
 }
 
 type IRCServer struct {
+	UserId string         `json:"-"`
 	Id     int            `json:"id"`
 	Name   string         `json:"name"`
 	Server *IRCServerInfo `json:"server"`
 	User   *IRCUser       `json:"user"`
 	Active bool           `json:"active"`
+}
+
+func (v *IRCChannel) GetKey() string {
+	return fmt.Sprintf("channel:%s:%d:%s", v.UserId, v.ServerId, strings.ToLower(v.Name))
+}
+
+func (v *IRCServer) GetKey() string {
+	return fmt.Sprintf("server:%s:%d", v.UserId, v.Id)
+}
+
+func (v *IRCLog) GetKey() string {
+	return fmt.Sprintf("log:%s:%d:%s", v.UserId, v.ServerId, strings.ToLower(v.Channel))
+}
+
+func (v *IRCLog) RedisSave(r redis.Conn) error {
+	data, err := GobEncode(v)
+	if err != nil {
+		return err
+	}
+	_, err = r.Do("ZADD", v.GetKey(), v.LogId, data)
+	return err
+}
+
+func GetLastLogs(userId string, serverId int, channel string, lastLogId int64, count int) ([]*IRCLog, error) {
+	r := pool.Get()
+	defer r.Close()
+
+	key := fmt.Sprintf("log:%s:%d:%s", userId, serverId, strings.ToLower(channel))
+
+	var min interface{}
+	if lastLogId != -1 {
+		min = "-inf"
+	} else {
+		min = lastLogId
+	}
+	reply, err := r.Values(r.Do("ZREVRANGEBYSCORE", key, "+inf", min, "LIMIT", 0, count))
+	if err != nil {
+		return nil, err
+	}
+
+	logs := make([]*IRCLog, len(reply))
+	for i := 0; i < len(reply); i++ {
+		data, err := redis.Bytes(reply[i])
+		if err != nil {
+			return nil, err
+		}
+		var log IRCLog
+		err = GobDecode(data, &log)
+		if err != nil {
+			return nil, err
+		}
+		logs[len(logs)-1-i] = &log
+	}
+	return logs, nil
+}
+
+func GetPastLogs(userId string, serverId int, channel string, lastLogId int64, count int) ([]*IRCLog, error) {
+	r := pool.Get()
+	defer r.Close()
+
+	key := fmt.Sprintf("log:%s:%d:%s", userId, serverId, strings.ToLower(channel))
+	min := fmt.Sprintf("(%d", lastLogId)
+
+	reply, err := r.Values(r.Do("ZRANGEBYSCORE", key, min, "+inf", "LIMIT", 0, count))
+	if err != nil {
+		return err
+	}
+
+	logs := make([]*IRCLogs, len(reply))
+	for i := 0; i < len(reply); i++ {
+		data, err := redis.Bytes(reply[i])
+		if err != nil {
+			return nil, err
+		}
+		var log IRCLog
+		err = GobDecode(data, &log)
+		if err != nil {
+			return nil, err
+		}
+		logs[i] = &log
+	}
+	return logs, nil
 }

@@ -41,14 +41,14 @@ type UserManager struct {
 }
 
 func (um *UserManager) GetUserByKey(key string) (*User, error) {
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
+	r := common.DefaultRedisPool().Get()
+	defer r.Close()
 
-	id, err := r.Hget("key", key)
+	id, err := r.String(r.Do("key", key))
 	if err != nil || id == nil {
 		return nil, &CacheNotFound{key: key}
 	}
-	return um.GetUserById(string(id))
+	return um.GetUserById(id)
 }
 
 func (um *UserManager) GetConnectedUser(id string) (*User, error) {
@@ -82,27 +82,10 @@ func (um *UserManager) GetUserById(id string) (*User, error) {
 }
 
 func (um *UserManager) LoadUser(id string) *User {
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
-
 	user := &User{
-		Id:      id,
-		servers: make(map[int]*common.IRCServer),
-		conns:   make(map[*Connection]bool),
-	}
-
-	value, err := r.Hgetall(user.ServerKey())
-	if err != nil {
-		logger.Println("LoadUser Error : ", err)
-		return nil
-	}
-	result := common.Convert(value)
-
-	for k, v := range result {
-		var info common.IRCServer
-		json.Unmarshal([]byte(v), &info)
-		serverid, _ := strconv.Atoi(k)
-		user.servers[serverid] = &info
+		Id:       id,
+		conns:    make(map[*Connection]bool),
+		serverid: &common.RedisNumber(fmt.Sprintf("serverid:%s", id)),
 	}
 
 	return user
@@ -116,9 +99,12 @@ func (um *UserManager) RegisterUser(id string) string {
 	key := fmt.Sprintf("%0x", h.Sum(nil))
 	um.GetUserById(id)
 
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
-	r.Hset("key", key, []byte(id))
+	r := common.DefaultRedisPool().Get()
+	defer r.Close()
+	_, err := r.Do("key", key, id)
+	if err != nil {
+		logger.Println("RegisterUser: ", err)
+	}
 	return key
 }
 
@@ -153,89 +139,46 @@ func (um *UserManager) run() {
 
 type User struct {
 	sync.RWMutex
-	Id      string
-	servers map[int]*common.IRCServer
-	conns   map[*Connection]bool
+	Id       string
+	conns    map[*Connection]bool
+	serverId *common.RedisNumber
 }
 
-func (u *User) ChannelKey() string {
-	return fmt.Sprintf("Channels:%s", u.Id)
+func (u *User) ServerListKey() string {
+	return fmt.Sprintf("servers:%s", u.Id)
 }
-
-func (u *User) ServerKey() string {
-	return fmt.Sprintf("Servers:%s", u.Id)
-}
-
-func (u *User) GetLogId() int64 {
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
-	id, _ := r.Incr(fmt.Sprintf("logid:%s", u.Id))
-	return id
-}
-
-func (u *User) GetServerId() int {
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
-	id, _ := r.Incr(fmt.Sprintf("serverid:%s", u.Id))
-	return int(id)
+func (u *User) ChannelListKey() string {
+	return fmt.Sprintf("channels:%s", u.Id)
 }
 
 func (u *User) GetServers() (servers []*common.IRCServer) {
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
-
-	u.RLock()
-	defer u.RUnlock()
-	servers = make([]*common.IRCServer, 0)
-	for _, v := range u.servers {
-		servers = append(servers, v)
+	err := common.RedisSliceLoad(u.ServerListKey(), &servers)
+	if err != nil {
+		logger.Println("GetServers: ", err)
 	}
 	return
 }
 
 func (u *User) GetChannels() (channels []*common.IRCChannel) {
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
-
-	channels = make([]*common.IRCChannel, 0)
-	value, err := r.Hgetall(u.ChannelKey())
+	err := common.RedisSliceLoad(u.ChannelListKey(), &channels)
 	if err != nil {
-		logger.Println("GetChannels Error : ", err)
-		return
-	}
-
-	result := common.Convert(value)
-	for k, _ := range result {
-		value, err := r.Get(k)
-		if err != nil {
-			logger.Println("GetChannels Error : ", err)
-			return
-		}
-		var channel common.IRCChannel
-		json.Unmarshal(value, &channel)
-		channels = append(channels, &channel)
+		logger.Println("GetChannels: ", err)
+		return nil
 	}
 	return
 }
 
 func (u *User) AddServer(server *common.IRCServer) (*common.IRCServer, error) {
-	server.Id = u.GetServerId()
+	server.Id = int(u.serverId.Incr())
+	server.UserId = u.Id
 	server.Active = false
 
-	u.Lock()
-	defer u.Unlock()
+	servers = []*common.IRCServer{server}
 
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
-
-	data, _ := json.Marshal(server)
-	err := r.Hset(u.ServerKey(), strconv.Itoa(server.Id), data)
+	err := common.RedisSliceSave(u.ServerListKey(), &servers)
 	if err != nil {
-		logger.Println("AddServer Error : ", err)
 		return nil, err
 	}
-
-	u.servers[server.Id] = server
 
 	manager.zmq.Send <- common.MakeZmqMsg(u.Id, server.Id, common.ZmqAddServer{ServerInfo: server})
 
@@ -246,43 +189,20 @@ func (u *User) AddChannelMsg(serverid int, channel string) {
 	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverid, common.ZmqAddChannel{Channel: &common.IRCChannel{Name: channel}})
 }
 
-func (u *User) GetPastLogs(last_log_id, numLogs, serverid int, channel string) ([]*common.IRCLog, error) {
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
-
-	//key := fmt.Sprintf("log:%s:%d:%s", u.Id, serverid, channel)
-
-	return nil, nil
+func (u *User) GetPastLogs(lastLogId int64, numLogs, serverId int, channel string) ([]*common.IRCLog, error) {
+	return common.GetPastLogs(u.Id, serverId, channel, lastLogId, numLogs)
 }
 
-func (u *User) GetInitLogs(numLogs int) ([]*common.IRCLog, error) {
-	r := manager.redis.Get()
-	defer manager.redis.Put(r)
-
-	value, err := r.Hgetall(u.ChannelKey())
-	if err != nil {
-		logger.Println("GetInitLogs Error : ", err)
-		return nil, err
-	}
-
-	result := common.Convert(value)
-
-	logs := make([]*common.IRCLog, 0)
-	for k, v := range result {
-		channel := strings.Split(k, ":")[3]
-		key := fmt.Sprintf("log:%s:%s:%s", u.Id, v, channel)
-		result, err := r.Lrange(key, 0, int64(numLogs))
+func (u *User) GetInitLogs(lastLogId int64, numLogs int) ([]*common.IRCLog, error) {
+	channels := u.GetChannels()
+	var logs []*common.IRCLog
+	for _, channel := range channels {
+		_logs, err := common.GetLastLogs(u.Id, channel.ServerId, channel.Name, lastLogId, numLogs)
 		if err != nil {
-			logger.Println("GetInitLogs Error : ", err)
 			return nil, err
 		}
-		for _, b := range result {
-			var log common.IRCLog
-			json.Unmarshal(b, &log)
-			logs = append(logs, &log)
-		}
+		logs = append(logs, _logs)
 	}
-
 	return logs, nil
 }
 
@@ -294,25 +214,12 @@ func (u *User) SendChatMsg(serverid int, target, message string) {
 	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverid, common.ZmqSendChat{Target: target, Message: message})
 }
 
-func (u *User) ChangeServerActive(serverid int, active bool) {
-	u.Lock()
-	defer u.Unlock()
-	server, ok := u.servers[serverid]
-	if !ok {
-		logger.Println("Server not found :", serverid)
-		return
-	}
-
-	logger.Println("Current State:", server.Active, active)
-	if server.Active == active {
-	}
-
-	server.Active = active
-
+func (u *User) ChangeServerActive(serverId int, active bool) {
 	packet := &Packet{
 		Cmd:     "serverActive",
-		RawData: map[string]interface{}{"server_id": serverid, "active": active},
+		RawData: map[string]interface{}{"server_id": serverId, "active": active},
 	}
+
 	u.Send(packet, nil)
 }
 

@@ -20,7 +20,7 @@ type ZmqMsg struct {
 
 var typeMap map[string]reflect.Type
 
-func (z *ZmqMsg) GetClientId() string {
+func (z *ZmqMsg) GetConnectionId() string {
 	return fmt.Sprintf("%s#%d", z.UserId, z.ServerId)
 }
 
@@ -37,41 +37,44 @@ func MakeZmqMsg(userid string, serverid int, packet ZmqPacket) *ZmqMsg {
 	}
 }
 
-func (z *ZmqMsg) Decode(b []byte) error {
-	dec := gob.NewDecoder(bytes.NewBuffer(b))
-	err := dec.Decode(z)
-	if err != nil {
-		return err
-	}
-	z.body = reflect.New(typeMap[z.BodyType]).Interface()
-	dec = gob.NewDecoder(bytes.NewBuffer(z.RawBody))
-	err = dec.Decode(z.body)
-	return err
-}
-
-func (z *ZmqMsg) Encode() ([]byte, error) {
+func GobEncode(v interface{}) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
-	z.BodyType = reflect.TypeOf(z.body).String()
-	err := enc.Encode(z.body)
-	if err != nil {
-		return nil, err
-	}
-	z.RawBody = buf.Bytes()
-	buf = new(bytes.Buffer)
-	enc = gob.NewEncoder(buf)
-	err = enc.Encode(z)
+	err := enc.Encode(v)
 	return buf.Bytes(), err
 }
 
+func GobDecode(b []byte, v interface{}) error {
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
+	err := dec.Decode(v)
+	return err
+}
+
+func (z *ZmqMsg) Decode(b []byte) error {
+	if err := GobDecode(b, z); err != nil {
+		return err
+	}
+	z.body = reflect.New(typeMap[z.BodyType]).Interface()
+	return GobDecode(z.RawBody, z.body)
+}
+
+func (z *ZmqMsg) Encode() (_ []byte, err error) {
+	z.BodyType = reflect.TypeOf(z.body).String()
+	z.RawBody, err = GobEncode(z.body)
+	if err != nil {
+		return nil, err
+	}
+	return GobEncode(z)
+}
+
 type ZmqMessenger struct {
-	ctx        zmq.Context
-	sock_push  zmq.Socket
-	sock_pull  zmq.Socket
-	Send       chan *ZmqMsg
-	Recv       chan *ZmqMsg
-	handler    map[string]ZmqHandler
-	numWorker  int
+	ctx       zmq.Context
+	sock_push zmq.Socket
+	sock_pull zmq.Socket
+	Send      chan *ZmqMsg
+	Recv      chan *ZmqMsg
+	handler   map[string]ZmqHandler
+	numWorker int
 }
 
 type ZmqHandler interface {
@@ -94,13 +97,13 @@ func NewZmqMessenger(pushaddr, pulladdr string, numWorker int) *ZmqMessenger {
 	sock_pull.Connect(pulladdr)
 
 	return &ZmqMessenger{
-		ctx:        ctx,
-		sock_push:  sock_push,
-		sock_pull:  sock_pull,
-		Send:       make(chan *ZmqMsg, 256),
-		Recv:       make(chan *ZmqMsg, 256),
-		handler:    make(map[string]ZmqHandler),
-		numWorker:  numWorker,
+		ctx:       ctx,
+		sock_push: sock_push,
+		sock_pull: sock_pull,
+		Send:      make(chan *ZmqMsg, 256),
+		Recv:      make(chan *ZmqMsg, 256),
+		handler:   make(map[string]ZmqHandler),
+		numWorker: numWorker,
 	}
 }
 
