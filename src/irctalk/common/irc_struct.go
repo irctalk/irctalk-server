@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"redigo/redis"
 )
 
 func UnixMilli(t time.Time) int64 {
@@ -83,14 +84,14 @@ func GetLastLogs(userId string, serverId int, channel string, lastLogId int64, c
 	} else {
 		min = lastLogId
 	}
-	reply, err := r.Values(r.Do("ZREVRANGEBYSCORE", key, "+inf", min, "LIMIT", 0, count))
+	reply, err := redis.Values(r.Do("ZREVRANGEBYSCORE", key, "+inf", min, "LIMIT", 0, count))
 	if err != nil {
 		return nil, err
 	}
 
 	logs := make([]*IRCLog, len(reply))
 	for i := 0; i < len(reply); i++ {
-		data, err := redis.Bytes(reply[i])
+		data, err := redis.Bytes(reply[i], nil)
 		if err != nil {
 			return nil, err
 		}
@@ -111,14 +112,14 @@ func GetPastLogs(userId string, serverId int, channel string, lastLogId int64, c
 	key := fmt.Sprintf("log:%s:%d:%s", userId, serverId, strings.ToLower(channel))
 	min := fmt.Sprintf("(%d", lastLogId)
 
-	reply, err := r.Values(r.Do("ZRANGEBYSCORE", key, min, "+inf", "LIMIT", 0, count))
+	reply, err := redis.Values(r.Do("ZRANGEBYSCORE", key, min, "+inf", "LIMIT", 0, count))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	logs := make([]*IRCLogs, len(reply))
+	logs := make([]*IRCLog, len(reply))
 	for i := 0; i < len(reply); i++ {
-		data, err := redis.Bytes(reply[i])
+		data, err := redis.Bytes(reply[i], nil)
 		if err != nil {
 			return nil, err
 		}

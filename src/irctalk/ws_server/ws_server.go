@@ -17,7 +17,8 @@ type Managers struct {
 }
 
 func (m *Managers) start() {
-	common.MakeRedisPool("tcp". ":9002", 0, 16)
+	RegisterPacket()
+	common.MakeRedisPool("tcp", ":9002", 0, 16)
 	common.RegisterPacket()
 	InitHandler(m.zmq)
 	go m.zmq.Start()
@@ -39,21 +40,6 @@ var manager = &Managers{
 		broadcast:  make(chan *UserMessage, 256),
 	},
 	zmq:   common.NewZmqMessenger("tcp://127.0.0.1:9100", "tcp://127.0.0.1:9200", 4),
-}
-
-type Packet struct {
-	Cmd     string                 `json:"type"`
-	Msg_id  int                    `json:"msg_id,omitempty"`
-	Status  int                    `json:"status"`
-	Msg     string                 `json:"msg,omitempty"`
-	RawData map[string]interface{} `json:"data"`
-}
-
-func (p Packet) MakeResponse() *Packet {
-	resp := p
-	resp.RawData = make(map[string]interface{})
-	resp.Status = 0
-	return &resp
 }
 
 func wsHandler(ws *websocket.Conn) {

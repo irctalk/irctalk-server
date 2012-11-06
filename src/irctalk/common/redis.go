@@ -165,7 +165,7 @@ func (v *RedisSlice) RedisLoad(r redis.Conn) error {
 		newVal := reflect.MakeSlice(v.sType, len(reply), len(reply))
 		for i, data := range reply {
 			elem := reflect.New(v.eType.Elem())
-			data, err = redis.Bytes(data)
+			data, err := redis.Bytes(data, nil)
 			if err != nil {
 				return nil
 			}

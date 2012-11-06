@@ -3,12 +3,10 @@ package main
 import (
 	"crypto/hmac"
 	"crypto/sha1"
-	"encoding/json"
 	"fmt"
 	"io"
 	"irctalk/common"
-	"strconv"
-	"strings"
+	"redigo/redis"
 	"sync"
 	"time"
 )
@@ -44,8 +42,8 @@ func (um *UserManager) GetUserByKey(key string) (*User, error) {
 	r := common.DefaultRedisPool().Get()
 	defer r.Close()
 
-	id, err := r.String(r.Do("key", key))
-	if err != nil || id == nil {
+	id, err := redis.String(r.Do("key", key))
+	if err != nil {
 		return nil, &CacheNotFound{key: key}
 	}
 	return um.GetUserById(id)
@@ -83,9 +81,10 @@ func (um *UserManager) GetUserById(id string) (*User, error) {
 
 func (um *UserManager) LoadUser(id string) *User {
 	user := &User{
-		Id:       id,
-		conns:    make(map[*Connection]bool),
-		serverid: &common.RedisNumber(fmt.Sprintf("serverid:%s", id)),
+		Id:          id,
+		conns:       make(map[*Connection]bool),
+		serverIdSeq: &common.RedisNumber{fmt.Sprintf("serverid:%s", id)},
+		logIdSeq:    &common.RedisNumber{fmt.Sprintf("logid:%s", id)},
 	}
 
 	return user
@@ -112,9 +111,7 @@ func (um *UserManager) run() {
 	for {
 		select {
 		case c := <-um.register:
-			um.Lock()
 			c.user.conns[c] = true
-			um.Unlock()
 		case c := <-um.unregister:
 			if c.user != nil {
 				delete(c.user.conns, c)
@@ -139,9 +136,10 @@ func (um *UserManager) run() {
 
 type User struct {
 	sync.RWMutex
-	Id       string
-	conns    map[*Connection]bool
-	serverId *common.RedisNumber
+	Id          string
+	conns       map[*Connection]bool
+	serverIdSeq *common.RedisNumber
+	logIdSeq    *common.RedisNumber
 }
 
 func (u *User) ServerListKey() string {
@@ -169,11 +167,11 @@ func (u *User) GetChannels() (channels []*common.IRCChannel) {
 }
 
 func (u *User) AddServer(server *common.IRCServer) (*common.IRCServer, error) {
-	server.Id = int(u.serverId.Incr())
+	server.Id = int(u.serverIdSeq.Incr())
 	server.UserId = u.Id
 	server.Active = false
 
-	servers = []*common.IRCServer{server}
+	servers := []*common.IRCServer{server}
 
 	err := common.RedisSliceSave(u.ServerListKey(), &servers)
 	if err != nil {
@@ -201,9 +199,18 @@ func (u *User) GetInitLogs(lastLogId int64, numLogs int) ([]*common.IRCLog, erro
 		if err != nil {
 			return nil, err
 		}
-		logs = append(logs, _logs)
+		logs = append(logs, _logs...)
 	}
 	return logs, nil
+}
+
+func (u *User) GetServer(serverId int) (*common.IRCServer, error) {
+	server := &common.IRCServer{UserId: u.Id, Id: serverId}
+	err := common.RedisLoad(server)
+	if err != nil {
+		return nil, err
+	}
+	return server, nil
 }
 
 func (u *User) Send(packet *Packet, conn *Connection) {
@@ -215,11 +222,7 @@ func (u *User) SendChatMsg(serverid int, target, message string) {
 }
 
 func (u *User) ChangeServerActive(serverId int, active bool) {
-	packet := &Packet{
-		Cmd:     "serverActive",
-		RawData: map[string]interface{}{"server_id": serverId, "active": active},
-	}
-
+	packet := MakePacket(&SendServerActive{ServerId:serverId, Active:active})
 	u.Send(packet, nil)
 }
 

@@ -16,7 +16,7 @@ func InitHandler(z *common.ZmqMessenger) {
 		irclog := msg.Body().(*common.ZmqChat).Log
 
 		logger.Printf("Msg Recv: %+v\n", irclog)
-		packet := &Packet{Cmd: "pushLog", RawData: map[string]interface{}{"log": irclog}}
+		packet := MakePacket(&SendPushLog{Log:irclog})
 		user.Send(packet, nil)
 	})
 
@@ -38,7 +38,7 @@ func InitHandler(z *common.ZmqMessenger) {
 		}
 
 		channel := msg.Body().(*common.ZmqAddChannel).Channel
-		packet := &Packet{Cmd: "addChannel", RawData: map[string]interface{}{"channel": channel}}
+		packet := MakePacket(&ResAddChannel{Channel:channel})
 		user.Send(packet, nil)
 	})
 }

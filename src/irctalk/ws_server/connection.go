@@ -2,16 +2,17 @@ package main
 
 import (
 	"code.google.com/p/go.net/websocket"
+	"encoding/json"
 	"irctalk/common"
 	"time"
 )
 
 type Connection struct {
-	ws          *websocket.Conn
-	send        chan *Packet
-	user        *User
-	handler     PacketHandler
-	stoprecv    chan bool
+	ws       *websocket.Conn
+	send     chan *Packet
+	user     *User
+	handler  PacketHandler
+	stoprecv chan bool
 }
 
 func AuthUser(f func(*Connection, *Packet)) func(*Connection, *Packet) {
@@ -32,8 +33,10 @@ func MakeDefaultPacketHandler() *PacketMux {
 	h.HandleFunc("register", func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		token := packet.RawData["access_token"].(string)
-		g := NewGoogleOauth(token)
+		reqBody := packet.body.(*ReqRegister)
+		resBody := resp.body.(*ResRegister)
+
+		g := NewGoogleOauth(reqBody.AccessToken)
 		userinfo, err := g.GetUserInfo()
 		if err != nil {
 			logger.Println("GetUserInfo Error:", err)
@@ -49,14 +52,15 @@ func MakeDefaultPacketHandler() *PacketMux {
 			resp.Msg = "Invalid Access Token"
 			return
 		}
-		resp.RawData["auth_key"] = manager.user.RegisterUser(id)
+		resBody.AuthKey = manager.user.RegisterUser(id)
 	})
 
 	h.HandleFunc("login", func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		key := packet.RawData["auth_key"].(string)
-		user, err := manager.user.GetUserByKey(key)
+		reqBody := packet.body.(*ReqLogin)
+
+		user, err := manager.user.GetUserByKey(reqBody.AuthKey)
 		if err != nil {
 			logger.Println("[Login] GetUserInfo Error:", err)
 			resp.Status = -401
@@ -74,28 +78,55 @@ func MakeDefaultPacketHandler() *PacketMux {
 	h.HandleFunc("getServers", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		resp.RawData["servers"] = c.user.GetServers()
-		resp.RawData["channels"] = c.user.GetChannels()
-		logger.Printf("%+v\n", resp)
+		resBody := resp.body.(*ResGetServers)
+
+		resBody.Servers = c.user.GetServers()
+		resBody.Channels = c.user.GetChannels()
+
+		logger.Printf("%+v %+v\n", resp, resBody)
 	}))
 
 	h.HandleFunc("getInitLogs", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
+		reqBody := packet.body.(*ReqGetInitLogs)
+		resBody := resp.body.(*ResGetInitLogs)
+
 		numLogs := 30
-		_numLogs, ok := packet.RawData["log_count"]
-		if ok {
-			numLogs = int(_numLogs.(float64))
+		lastLogId := int64(-1)
+		if reqBody.LogCount != 0 {
+			numLogs = reqBody.LogCount
 		}
-		logs, err := c.user.GetInitLogs(numLogs)
+		if reqBody.LastLogId != 0 {
+			lastLogId = reqBody.LastLogId
+		}
+
+		var err error
+		resBody.Logs, err = c.user.GetInitLogs(lastLogId, numLogs)
 		if err != nil {
 			logger.Printf("getInitLog Error :", err)
 			resp.Status = -500
 			resp.Msg = err.Error()
 			return
 		}
-		resp.RawData["logs"] = logs
-		logger.Printf("%+v\n", resp)
+		logger.Printf("%+v %+v\n", resp, resBody)
+	}))
+
+	h.HandleFunc("getPastLogs", AuthUser(func(c *Connection, packet *Packet) {
+		resp := packet.MakeResponse()
+		defer c.Send(resp)
+		reqBody := packet.body.(*ReqGetPastLogs)
+		resBody := resp.body.(*ResGetPastLogs)
+
+		var err error
+		resBody.Logs, err = c.user.GetPastLogs(reqBody.LastLogId, reqBody.LogCount, reqBody.ServerId, reqBody.Channel)
+		if err != nil {
+			logger.Printf("getPastLogs Error :", err)
+			resp.Status = -500
+			resp.Msg = err.Error()
+			return
+		}
+		logger.Printf("%+v %+v\n", resp, resBody)
 	}))
 
 	h.HandleFunc("pushLog", AuthUser(func(c *Connection, packet *Packet) {
@@ -105,51 +136,51 @@ func MakeDefaultPacketHandler() *PacketMux {
 	h.HandleFunc("sendLog", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		c.user.RLock()
-		defer c.user.RUnlock()
-		serverid := int(packet.RawData["server_id"].(float64))
-		server, ok := c.user.servers[serverid]
-		if !ok || !server.Active {
+		reqBody := packet.body.(*ReqSendLog)
+		resBody := resp.body.(*ResSendLog)
+
+		server, err := c.user.GetServer(reqBody.ServerId)
+		if err != nil || !server.Active {
 			logger.Println("SendLog failed. server is not connected")
 			resp.Status = -500
 			resp.Msg = "Server is not connected"
 			return
 		}
 
-		irclog := common.IRCLog{
-			Log_id:    c.user.GetLogId(),
-			Server_id: serverid,
+		irclog := &common.IRCLog{
+			UserId:    c.user.Id,
+			LogId:     c.user.logIdSeq.Incr(),
+			ServerId:  reqBody.ServerId,
 			Timestamp: common.UnixMilli(time.Now()),
-			Channel:   packet.RawData["channel"].(string),
+			Channel:   reqBody.Channel,
 			From:      server.User.Nickname,
-			Message:   packet.RawData["message"].(string),
+			Message:   reqBody.Message,
 		}
-		c.user.SendChatMsg(serverid, irclog.Channel, irclog.Message)
-		resp.RawData["log"] = irclog
-		push := &Packet{Cmd: "pushLog", RawData: map[string]interface{}{"log": irclog}}
-		c.user.Send(push, c)
+		c.user.SendChatMsg(reqBody.ServerId, irclog.Channel, irclog.Message)
+		resBody.Log = irclog
+		c.user.Send(MakePacket(resBody), c)
 	}))
 
 	h.HandleFunc("addServer", AuthUser(func(c *Connection, packet *Packet) {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
-		var server common.IRCServer
-		common.Import(packet.RawData["server"], &server)
-		ret, err := c.user.AddServer(&server)
+		reqBody := packet.body.(*ReqAddServer)
+		resBody := resp.body.(*ResAddServer)
+
+		var err error
+		resBody.Server, err = c.user.AddServer(reqBody.Server)
 		if err != nil {
 			logger.Println("AddServer Error :", err)
 			resp.Status = -500
 			resp.Msg = err.Error()
 			return
 		}
-		resp.RawData["server"] = ret
 		c.user.Send(resp, c)
 	}))
 
 	h.HandleFunc("addChannel", AuthUser(func(c *Connection, packet *Packet) {
-		serverid := int(packet.RawData["server_id"].(float64))
-		channel := packet.RawData["channel"].(string)
-		c.user.AddChannelMsg(serverid, channel)
+		reqBody := packet.body.(*ReqSendLog)
+		c.user.AddChannelMsg(reqBody.ServerId, reqBody.Channel)
 	}))
 
 	return h
@@ -229,9 +260,16 @@ func (c *Connection) writer() {
 func (c *Connection) Send(packet *Packet) {
 	defer func() {
 		if x := recover(); x != nil {
-			logger.Printf("Connection Closed. This Packet will be dropped.")
+			logger.Println("Connection Closed. This Packet will be dropped.", x)
 		}
 	}()
+
+	var err error
+	packet.RawData, err = json.Marshal(packet.body)
+	if err != nil {
+		logger.Println("Json Marshal Error:", packet.body, err)
+		return
+	}
 	select {
 	case c.send <- packet:
 	case <-time.After(2 * time.Second):

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 )
 
 type PacketHandlerFunc func(*Connection, *Packet)
@@ -54,9 +56,21 @@ func HandleFunc(cmd string, handler func(*Connection, *Packet)) {
 }
 
 func (mux *PacketMux) Handle(conn *Connection, packet *Packet) {
-	h, ok := mux.m[packet.Cmd]
-	if !ok {
+	h, h_ok := mux.m[packet.Cmd]
+	if !h_ok {
 		h = NotFoundHandler()
+	}
+
+	t, t_ok := reqTypeMap[packet.Cmd]
+	if !t_ok {
+		logger.Println("Unknown PacketTypeError: ", packet.Cmd)
+		return
+	}
+	packet.body = reflect.New(t).Interface()
+	err := json.Unmarshal(packet.RawData, packet.body)
+	if err != nil {
+		logger.Println("Json Unmarshal Error: ", packet.Cmd, err)
+		return
 	}
 	mux.job <- &PacketJob{c: conn, p: packet, h: h}
 }
