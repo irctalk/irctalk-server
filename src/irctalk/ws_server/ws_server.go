@@ -17,6 +17,7 @@ type Managers struct {
 }
 
 func (m *Managers) start() {
+	common.InitConfig()
 	RegisterPacket()
 	common.MakeRedisPool("tcp", ":9002", 0, 16)
 	common.RegisterPacket()

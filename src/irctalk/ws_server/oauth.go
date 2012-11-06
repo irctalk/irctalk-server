@@ -4,6 +4,7 @@ import (
 	"code.google.com/p/goauth2/oauth"
 	"encoding/json"
 	"io"
+	"irctalk/common"
 )
 
 type GoogleOauth struct {
@@ -28,10 +29,10 @@ func (e *InvalidCodeError) Error() string {
 func NewGoogleOauth(token string) *GoogleOauth {
 	g := &GoogleOauth{
 		config: &oauth.Config{
-			ClientId:     "812906460657-2ppupr0380a41ffau4sdcdpgcarja17c.apps.googleusercontent.com",
-			ClientSecret: "ns4SeGI9TfYCvDPKilCslNKL",
-			TokenURL:     "https://accounts.google.com/o/oauth2/token",
-			RedirectURL:  "http://localhost",
+			ClientId:     common.Config.Oauth.ClientId,
+			ClientSecret: common.Config.Oauth.ClientSecret,
+			TokenURL:     common.Config.Oauth.TokenURL,
+			RedirectURL:  common.Config.Oauth.RedirectURL,
 		},
 		token: token,
 	}
