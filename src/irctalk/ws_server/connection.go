@@ -4,6 +4,7 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
 	"irctalk/common"
+	"log"
 	"time"
 )
 
@@ -39,15 +40,15 @@ func MakeDefaultPacketHandler() *PacketMux {
 		g := NewGoogleOauth(reqBody.AccessToken)
 		userinfo, err := g.GetUserInfo()
 		if err != nil {
-			logger.Println("GetUserInfo Error:", err)
+			log.Println("GetUserInfo Error:", err)
 			resp.Status = -500
 			resp.Msg = err.Error()
 			return
 		}
-		logger.Printf("%+v\n", userinfo)
+		log.Printf("%+v\n", userinfo)
 		id, ok := userinfo["id"].(string)
 		if !ok {
-			logger.Println("oauth Error!")
+			log.Println("oauth Error!")
 			resp.Status = -500
 			resp.Msg = "Invalid Access Token"
 			return
@@ -62,7 +63,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 
 		user, err := manager.user.GetUserByKey(reqBody.AuthKey)
 		if err != nil {
-			logger.Println("[Login] GetUserInfo Error:", err)
+			log.Println("[Login] GetUserInfo Error:", err)
 			resp.Status = -401
 			resp.Msg = err.Error()
 			return
@@ -72,7 +73,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		// add connection to user
 		manager.user.register <- c
 
-		logger.Printf("%+v\n", user)
+		log.Printf("%+v\n", user)
 	})
 
 	h.HandleFunc("getServers", AuthUser(func(c *Connection, packet *Packet) {
@@ -83,7 +84,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		resBody.Servers = c.user.GetServers()
 		resBody.Channels = c.user.GetChannels()
 
-		logger.Printf("%+v %+v\n", resp, resBody)
+		log.Printf("%+v %+v\n", resp, resBody)
 	}))
 
 	h.HandleFunc("getInitLogs", AuthUser(func(c *Connection, packet *Packet) {
@@ -104,12 +105,12 @@ func MakeDefaultPacketHandler() *PacketMux {
 		var err error
 		resBody.Logs, err = c.user.GetInitLogs(lastLogId, numLogs)
 		if err != nil {
-			logger.Printf("getInitLog Error :", err)
+			log.Printf("getInitLog Error :", err)
 			resp.Status = -500
 			resp.Msg = err.Error()
 			return
 		}
-		logger.Printf("%+v %+v\n", resp, resBody)
+		log.Printf("%+v %+v\n", resp, resBody)
 	}))
 
 	h.HandleFunc("getPastLogs", AuthUser(func(c *Connection, packet *Packet) {
@@ -121,16 +122,16 @@ func MakeDefaultPacketHandler() *PacketMux {
 		var err error
 		resBody.Logs, err = c.user.GetPastLogs(reqBody.LastLogId, reqBody.LogCount, reqBody.ServerId, reqBody.Channel)
 		if err != nil {
-			logger.Printf("getPastLogs Error :", err)
+			log.Printf("getPastLogs Error :", err)
 			resp.Status = -500
 			resp.Msg = err.Error()
 			return
 		}
-		logger.Printf("%+v %+v\n", resp, resBody)
+		log.Printf("%+v %+v\n", resp, resBody)
 	}))
 
 	h.HandleFunc("pushLog", AuthUser(func(c *Connection, packet *Packet) {
-		logger.Printf("%+v\n", packet)
+		log.Printf("%+v\n", packet)
 	}))
 
 	h.HandleFunc("sendLog", AuthUser(func(c *Connection, packet *Packet) {
@@ -141,7 +142,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 
 		server, err := c.user.GetServer(reqBody.ServerId)
 		if err != nil || !server.Active {
-			logger.Println("SendLog failed. server is not connected")
+			log.Println("SendLog failed. server is not connected")
 			resp.Status = -500
 			resp.Msg = "Server is not connected"
 			return
@@ -170,7 +171,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		var err error
 		resBody.Server, err = c.user.AddServer(reqBody.Server)
 		if err != nil {
-			logger.Println("AddServer Error :", err)
+			log.Println("AddServer Error :", err)
 			resp.Status = -500
 			resp.Msg = err.Error()
 			return
@@ -179,7 +180,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 	}))
 
 	h.HandleFunc("addChannel", AuthUser(func(c *Connection, packet *Packet) {
-		reqBody := packet.body.(*ReqSendLog)
+		reqBody := packet.body.(*ReqAddChannel)
 		c.user.AddChannelMsg(reqBody.ServerId, reqBody.Channel)
 	}))
 
@@ -221,7 +222,7 @@ STOP:
 			var packet *Packet
 			err := websocket.JSON.Receive(c.ws, &packet)
 			if err != nil {
-				logger.Println("Read error: ", err)
+				log.Println("Read error: ", err)
 				stop <- true
 				return
 			}
@@ -229,7 +230,7 @@ STOP:
 		}()
 		select {
 		case packet := <-recv:
-			logger.Printf("%+v\n", packet)
+			log.Printf("%+v\n", packet)
 			c.handler.Handle(c, packet)
 		case <-c.stoprecv:
 			break STOP
@@ -238,41 +239,41 @@ STOP:
 		}
 	}
 	c.ws.Close()
-	logger.Println("closed")
+	log.Println("closed")
 }
 
 func (c *Connection) writer() {
 	for packet := range c.send {
-		logger.Println("try to write packet")
+		log.Println("try to write packet")
 		c.ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		err := websocket.JSON.Send(c.ws, packet)
 		if err != nil {
-			logger.Println("Write error: ", err)
+			log.Println("Write error: ", err)
 			break
 		}
-		logger.Println("success to write packet")
+		log.Println("success to write packet")
 	}
 	c.ws.Close()
 	c.stoprecv <- true
-	logger.Println("Write Closed")
+	log.Println("Write Closed")
 }
 
 func (c *Connection) Send(packet *Packet) {
 	defer func() {
 		if x := recover(); x != nil {
-			logger.Println("Connection Closed. This Packet will be dropped.", x)
+			log.Println("Connection Closed. This Packet will be dropped.", x)
 		}
 	}()
 
 	var err error
 	packet.RawData, err = json.Marshal(packet.body)
 	if err != nil {
-		logger.Println("Json Marshal Error:", packet.body, err)
+		log.Println("Json Marshal Error:", packet.body, err)
 		return
 	}
 	select {
 	case c.send <- packet:
 	case <-time.After(2 * time.Second):
-		logger.Printf("Send Buffer is Full. Packet will be dropped.")
+		log.Printf("Send Buffer is Full. Packet will be dropped.")
 	}
 }

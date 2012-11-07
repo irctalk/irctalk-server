@@ -2,18 +2,18 @@ package main
 
 import (
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	irc "github.com/fluffle/goirc/client"
 	"hash/crc32"
 	"irctalk/common"
 	"log"
-	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 type IRCManager struct {
+	sync.RWMutex
 	clients  map[string]*IRCClient
 	register chan *IRCClient
 }
@@ -22,40 +22,54 @@ func (im *IRCManager) run() {
 	for {
 		select {
 		case c := <-im.register:
+			im.Lock()
 			im.clients[c.Id] = c
-			c.Connect()
+			im.Unlock()
+			go c.Connect()
 		}
 	}
 }
 
-func (im *IRCManager) GetClient(msg *common.ZmqMsg) *IRCClient {
-	c, ok := im.clients[msg.GetClientId()]
+func (im *IRCManager) GetClient(userId string, serverId int) *IRCClient {
+	im.RLock()
+	defer im.RUnlock()
+
+	clientId := fmt.Sprintf("%s#%d", userId, serverId)
+	c, ok := im.clients[clientId]
 	if !ok {
 		return nil
 	}
 	return c
 }
 
-type IRCClient struct {
-	Id         string
-	UserId     string
-	ServerId   int
-	serverInfo *common.IRCServer
-	conn       *irc.Conn
-	channels   map[string]*Channel
+func (im *IRCManager) GetClientByMsg(msg *common.ZmqMsg) *IRCClient {
+	return im.GetClient(msg.UserId, msg.ServerId)
 }
 
-func NewClient(packet *common.ZmqMsg) *IRCClient {
-	info := packet.Body().(*common.ZmqAddServer).ServerInfo
-	ident := fmt.Sprintf("%0x", crc32.ChecksumIEEE([]byte(packet.UserId)))
+type IRCClient struct {
+	Id           string
+	UserId       string
+	ServerId     int
+	serverInfo   *common.IRCServer
+	conn         *irc.Conn
+	channels     map[string]*Channel
+	disconnected chan bool
+	logIdSeq     *common.RedisNumber
+}
+
+func NewClient(info *common.IRCServer) *IRCClient {
+	ident := fmt.Sprintf("%0x", crc32.ChecksumIEEE([]byte(info.UserId)))
+	clientId := fmt.Sprintf("%s#%d", info.UserId, info.Id)
 
 	client := &IRCClient{
-		Id:         packet.GetClientId(),
-		UserId:     packet.UserId,
-		ServerId:   info.Id,
-		serverInfo: info,
-		conn:       irc.SimpleClient(info.User.Nickname, ident, info.User.Realname),
-		channels:   make(map[string]*Channel),
+		Id:           clientId,
+		UserId:       info.UserId,
+		ServerId:     info.Id,
+		serverInfo:   info,
+		conn:         irc.SimpleClient(info.User.Nickname, ident, info.User.Realname),
+		channels:     make(map[string]*Channel),
+		disconnected: make(chan bool),
+		logIdSeq:     &common.RedisNumber{Key: fmt.Sprintf("logid:%s", info.UserId)},
 	}
 	client.conn.SSL = info.Server.SSL
 	client.conn.SSLConfig = &tls.Config{
@@ -66,7 +80,7 @@ func NewClient(packet *common.ZmqMsg) *IRCClient {
 		for _, channel := range client.channels {
 			if !channel.joined {
 				channel.joined = true
-				conn.Join(channel.name)
+				conn.Join(channel.info.Name)
 			}
 		}
 
@@ -81,6 +95,7 @@ func NewClient(packet *common.ZmqMsg) *IRCClient {
 
 		client.serverInfo.Active = false
 		client.WriteServerInfo()
+		client.disconnected <- true
 	})
 
 	client.conn.AddHandler("JOIN", func(conn *irc.Conn, line *irc.Line) {
@@ -91,7 +106,7 @@ func NewClient(packet *common.ZmqMsg) *IRCClient {
 		if line.Nick == conn.Me.Nick {
 			// join channel by me
 		} else {
-			channel, ok := client.channels[line.Args[0]]
+			channel, ok := client.GetChannel(line.Args[0])
 			if !ok {
 				log.Println("Invalid Channel :", line.Args[0])
 				return
@@ -105,7 +120,7 @@ func NewClient(packet *common.ZmqMsg) *IRCClient {
 
 		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 
-		channel, ok := client.channels[line.Args[0]]
+		channel, ok := client.GetChannel(line.Args[0])
 		if !ok {
 			log.Println("Invalid Channel :", line.Args[0])
 			return
@@ -114,16 +129,16 @@ func NewClient(packet *common.ZmqMsg) *IRCClient {
 	})
 
 	client.conn.AddHandler("332", func(conn *irc.Conn, line *irc.Line) {
-		channel, ok := client.channels[line.Args[1]]
+		channel, ok := client.GetChannel(line.Args[1])
 		if !ok {
 			log.Println("Invalid Channel :", line.Args[1])
 			return
 		}
-		channel.topic = line.Args[2]
+		channel.info.Topic = line.Args[2]
 	})
 
 	client.conn.AddHandler("353", func(conn *irc.Conn, line *irc.Line) {
-		channel, ok := client.channels[line.Args[2]]
+		channel, ok := client.GetChannel(line.Args[2])
 		if !ok {
 			log.Println("Invalid Channel :", line.Args[2])
 			return
@@ -135,12 +150,12 @@ func NewClient(packet *common.ZmqMsg) *IRCClient {
 	})
 
 	client.conn.AddHandler("366", func(conn *irc.Conn, line *irc.Line) {
-		channel, ok := client.channels[line.Args[1]]
+		channel, ok := client.GetChannel(line.Args[1])
 		if !ok {
 			log.Println("Invalid Channel :", line.Args[1])
 			return
 		}
-		_channel := channel.WriteChannelInfo()
+		_channel := channel.WriteChannelInfo(true)
 
 		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqAddChannel{Channel: _channel})
 	})
@@ -150,11 +165,21 @@ func NewClient(packet *common.ZmqMsg) *IRCClient {
 			client.serverInfo.User.Nickname = line.Args[0]
 			client.WriteServerInfo()
 		}
+		message := fmt.Sprintf("%s is now known as %s", line.Nick, line.Args[0])
 		for _, channel := range client.channels {
 			if channel.NickChange(line.Nick, line.Args[0]) {
-				message := fmt.Sprintf("%s is now known as %s", line.Nick, line.Args[0])
-				ircLog := client.WriteChatLog(line.Time, "", channel.name, message)
+				ircLog := client.WriteChatLog(line.Time, "", channel.info.Name, message)
 
+				zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
+			}
+		}
+	})
+
+	client.conn.AddHandler("QUIT", func(conn *irc.Conn, line *irc.Line) {
+		message := fmt.Sprintf("%s has quit [%s]", line.Nick, line.Args[0])
+		for _, channel := range client.channels {
+			if channel.PartUser(line.Nick) {
+				ircLog := client.WriteChatLog(line.Time, "", channel.info.Name, message)
 				zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 			}
 		}
@@ -177,9 +202,14 @@ func (c *IRCClient) MakeZmqMsg(packet common.ZmqPacket) *common.ZmqMsg {
 }
 
 func (c *IRCClient) Connect() {
-	addr := fmt.Sprintf("%s:%d", c.serverInfo.Server.Host, c.serverInfo.Server.Port)
-	if err := c.conn.Connect(addr); err != nil {
-		log.Println(err)
+	for {
+		addr := fmt.Sprintf("%s:%d", c.serverInfo.Server.Host, c.serverInfo.Server.Port)
+		if err := c.conn.Connect(addr); err != nil {
+			log.Println("Connect Error:", err)
+		} else {
+			<-c.disconnected
+		}
+		time.Sleep(10 * time.Second)
 	}
 }
 
@@ -189,67 +219,56 @@ func (c *IRCClient) SendLog(target, message string) {
 	c.WriteChatLog(time.Now(), c.serverInfo.User.Nickname, target, message)
 }
 
-func (c *IRCClient) AddChannel(channel string) {
-	c.channels[channel] = &Channel{
-		userId:   c.UserId,
-		serverId: c.ServerId,
-		name:     channel,
-		members:  make(map[string]bool),
+func (c *IRCClient) AddChannel(name string) {
+	channel := &Channel{
+		info: &common.IRCChannel{
+			UserId:   c.UserId,
+			ServerId: c.ServerId,
+			Name:     name,
+		},
+		members: make(map[string]bool),
 	}
 
-	r := redisPool.Get()
-	r.Hset(c.ChannelKey(), c.channels[channel].ChannelKey(), []byte(strconv.Itoa(c.ServerId)))
-	redisPool.Put(r)
-	c.channels[channel].WriteChannelInfo()
+	channels := []*common.IRCChannel{channel.info}
+	err := common.RedisSliceSave(fmt.Sprintf("channels:%s", c.UserId), &channels)
 
-	c.channels[channel].joined = c.conn.Connected
+	if err != nil {
+		log.Println("AddChannel Error: ", err)
+		return
+	}
+
+	channel.joined = c.conn.Connected
+	c.channels[strings.ToLower(name)] = channel
 	if c.conn.Connected {
-		c.conn.Join(channel)
+		c.conn.Join(name)
 	}
-}
-
-func (c *IRCClient) GetLogId() int64 {
-	r := redisPool.Get()
-	defer redisPool.Put(r)
-	id, _ := r.Incr(fmt.Sprintf("logid:%s", c.UserId))
-	return id
-}
-
-func (c *IRCClient) ChannelKey() string {
-	return fmt.Sprintf("Channels:%s", c.UserId)
-}
-
-func (c *IRCClient) ServerKey() string {
-	return fmt.Sprintf("Servers:%s", c.UserId)
 }
 
 func (c *IRCClient) WriteChatLog(timestamp time.Time, from, channel, message string) *common.IRCLog {
 	ircLog := &common.IRCLog{
-		Log_id:    c.GetLogId(),
+		UserId:    c.UserId,
+		LogId:     c.logIdSeq.Incr(),
 		Timestamp: common.UnixMilli(timestamp),
-		Server_id: c.ServerId,
+		ServerId:  c.ServerId,
 		Channel:   channel,
 		From:      from,
 		Message:   message,
 	}
 
-	r := redisPool.Get()
-	defer redisPool.Put(r)
-
-	key := fmt.Sprintf("log:%s:%d:%s", c.UserId, c.ServerId, channel)
-	data, _ := json.Marshal(ircLog)
-	r.Lpush(key, data)
+	common.RedisSave(ircLog)
 
 	return ircLog
 }
 
 func (c *IRCClient) WriteServerInfo() {
-	r := redisPool.Get()
-	defer redisPool.Put(r)
+	err := common.RedisSave(c.serverInfo)
 
-	data, _ := json.Marshal(c.serverInfo)
-	err := r.Hset(c.ServerKey(), strconv.Itoa(c.ServerId), data)
 	if err != nil {
 		log.Println("WriteServerInfo Error:", err)
 	}
+}
+
+func (c *IRCClient) GetChannel(name string) (*Channel, bool) {
+	channel, ok := c.channels[strings.ToLower(name)]
+	return channel, ok
 }

@@ -5,10 +5,7 @@ import (
 	"irctalk/common"
 	"log"
 	"net/http"
-	"os"
 )
-
-var logger = log.New(os.Stdout, "", log.LstdFlags|log.Lshortfile)
 
 type Managers struct {
 	connection *ConnectionManager
@@ -44,7 +41,7 @@ var manager = &Managers{
 }
 
 func wsHandler(ws *websocket.Conn) {
-	logger.Println("connected!")
+	log.Println("connected!")
 	c := &Connection{send: make(chan *Packet, 256), ws: ws, handler: manager.connection.h}
 	manager.connection.register <- c
 	defer func() { manager.connection.unregister <- c }()
@@ -53,6 +50,7 @@ func wsHandler(ws *websocket.Conn) {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags|log.Lshortfile)
 	manager.start()
 	http.Handle("/", websocket.Handler(wsHandler))
 	err := http.ListenAndServe(":9001", nil)

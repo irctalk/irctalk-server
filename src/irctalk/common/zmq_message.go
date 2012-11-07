@@ -20,7 +20,7 @@ type ZmqMsg struct {
 
 var typeMap map[string]reflect.Type
 
-func (z *ZmqMsg) GetConnectionId() string {
+func (z *ZmqMsg) GetClientId() string {
 	return fmt.Sprintf("%s#%d", z.UserId, z.ServerId)
 }
 

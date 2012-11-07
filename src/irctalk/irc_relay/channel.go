@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"irctalk/common"
 	"log"
 )
@@ -15,10 +13,10 @@ type Channel struct {
 
 func (c *Channel) WriteChannelInfo(memberChanged bool) *common.IRCChannel {
 	if memberChanged {
-		c.info.Members = make([]string, len(members))
+		c.info.Members = make([]string, len(c.members))
 		i := 0
-		for nick, _ := range members {
-			info.Members[i] = nick
+		for nick, _ := range c.members {
+			c.info.Members[i] = nick
 			i++
 		}
 	}
@@ -46,12 +44,17 @@ func (c *Channel) JoinUser(nick string) {
 	c.WriteChannelInfo(true)
 }
 
-func (c *Channel) PartUser(nick string) {
-	delete(c.members, nick)
-	c.WriteChannelInfo(true)
+func (c *Channel) PartUser(nick string) bool {
+	_, ok := c.members[nick]
+	if ok {
+		delete(c.members, nick)
+		c.WriteChannelInfo(true)
+		return true
+	}
+	return false
 }
 
 func (c *Channel) SetTopic(topic string) {
-	c.topic = topic
+	c.info.Topic = topic
 	c.WriteChannelInfo(false)
 }

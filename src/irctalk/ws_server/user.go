@@ -9,6 +9,7 @@ import (
 	"redigo/redis"
 	"sync"
 	"time"
+	"log"
 )
 
 // Errors
@@ -42,7 +43,7 @@ func (um *UserManager) GetUserByKey(key string) (*User, error) {
 	r := common.DefaultRedisPool().Get()
 	defer r.Close()
 
-	id, err := redis.String(r.Do("key", key))
+	id, err := redis.String(r.Do("HGET", "key", key))
 	if err != nil {
 		return nil, &CacheNotFound{key: key}
 	}
@@ -69,7 +70,7 @@ func (um *UserManager) GetUserById(id string) (*User, error) {
 		defer um.Unlock()
 		user = um.LoadUser(id)
 		if user == nil {
-			logger.Println("User Not Found")
+			log.Println("User Not Found")
 			return nil, &UserNotFound{id: id}
 		}
 		if _, ok := um.users[id]; !ok {
@@ -83,8 +84,8 @@ func (um *UserManager) LoadUser(id string) *User {
 	user := &User{
 		Id:          id,
 		conns:       make(map[*Connection]bool),
-		serverIdSeq: &common.RedisNumber{fmt.Sprintf("serverid:%s", id)},
-		logIdSeq:    &common.RedisNumber{fmt.Sprintf("logid:%s", id)},
+		serverIdSeq: &common.RedisNumber{Key: fmt.Sprintf("serverid:%s", id)},
+		logIdSeq:    &common.RedisNumber{Key: fmt.Sprintf("logid:%s", id)},
 	}
 
 	return user
@@ -100,9 +101,9 @@ func (um *UserManager) RegisterUser(id string) string {
 
 	r := common.DefaultRedisPool().Get()
 	defer r.Close()
-	_, err := r.Do("key", key, id)
+	_, err := r.Do("HSET", "key", key, id)
 	if err != nil {
-		logger.Println("RegisterUser: ", err)
+		log.Println("RegisterUser: ", err)
 	}
 	return key
 }
@@ -129,7 +130,7 @@ func (um *UserManager) run() {
 					cnt++
 				}
 			}
-			logger.Printf("[%s] broadcast to %d clients\n", m.user.Id, cnt)
+			log.Printf("[%s] broadcast to %d clients\n", m.user.Id, cnt)
 		}
 	}
 }
@@ -152,7 +153,7 @@ func (u *User) ChannelListKey() string {
 func (u *User) GetServers() (servers []*common.IRCServer) {
 	err := common.RedisSliceLoad(u.ServerListKey(), &servers)
 	if err != nil {
-		logger.Println("GetServers: ", err)
+		log.Println("GetServers: ", err)
 	}
 	return
 }
@@ -160,7 +161,7 @@ func (u *User) GetServers() (servers []*common.IRCServer) {
 func (u *User) GetChannels() (channels []*common.IRCChannel) {
 	err := common.RedisSliceLoad(u.ChannelListKey(), &channels)
 	if err != nil {
-		logger.Println("GetChannels: ", err)
+		log.Println("GetChannels: ", err)
 		return nil
 	}
 	return

@@ -2,6 +2,7 @@ package main
 
 import (
 	"irctalk/common"
+	"log"
 )
 
 // relay server -> irctalk server 
@@ -15,7 +16,7 @@ func InitHandler(z *common.ZmqMessenger) {
 		}
 		irclog := msg.Body().(*common.ZmqChat).Log
 
-		logger.Printf("Msg Recv: %+v\n", irclog)
+		log.Printf("Msg Recv: %+v\n", irclog)
 		packet := MakePacket(&SendPushLog{Log:irclog})
 		user.Send(packet, nil)
 	})
@@ -23,7 +24,7 @@ func InitHandler(z *common.ZmqMessenger) {
 	z.HandleFunc("SERVER_STATUS", func(msg *common.ZmqMsg) {
 		user, err := manager.user.GetConnectedUser(msg.UserId)
 		if err != nil {
-			logger.Println("[ZMQMSG]SERVER_STATUS ERROR:", err)
+			log.Println("[ZMQMSG]SERVER_STATUS ERROR:", err)
 			return
 		}
 		active := msg.Body().(*common.ZmqServerStatus).Active
@@ -33,7 +34,7 @@ func InitHandler(z *common.ZmqMessenger) {
 	z.HandleFunc("ADD_CHANNEL", func(msg *common.ZmqMsg) {
 		user, err := manager.user.GetConnectedUser(msg.UserId)
 		if err != nil {
-			logger.Println("[ZMQMSG]ADD_CHANNEL ERROR:", err)
+			log.Println("[ZMQMSG]ADD_CHANNEL ERROR:", err)
 			return
 		}
 

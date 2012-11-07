@@ -3,6 +3,7 @@ package main
 import (
 	"irctalk/common"
 	"reflect"
+	"log"
 )
 
 var reqTypeMap map[string]reflect.Type
@@ -13,14 +14,25 @@ type Packet struct {
 	MsgId   int    `json:"msg_id,omitempty"`
 	Status  int    `json:"status"`
 	Msg     string `json:"msg,omitempty"`
-	RawData []byte `json:"data"`
+	RawData JSONData `json:"data"`
 	body    interface{}
+}
+
+type JSONData []byte
+
+func (p *JSONData) MarshalJSON() ([]byte, error) {
+	return *p, nil
+}
+
+func (p *JSONData) UnmarshalJSON(data []byte) error {
+	*p = data
+	return nil
 }
 
 func (p Packet) MakeResponse() *Packet {
 	t, ok := resTypeMap[p.Cmd]
 	if !ok {
-		logger.Println("MakeResponse Error: ", p.Cmd)
+		log.Println("MakeResponse Error: ", p.Cmd)
 		return nil
 	}
 	resp := reflect.New(t).Interface().(PacketCommand)
@@ -54,6 +66,7 @@ func registerResponsePacketType(p PacketCommand) {
 
 func RegisterPacket() {
 	reqTypeMap = make(map[string]reflect.Type)
+	resTypeMap = make(map[string]reflect.Type)
 	registerRequestPacketType(ReqRegister{})
 	registerRequestPacketType(ReqLogin{})
 	registerRequestPacketType(ReqGetServers{})
