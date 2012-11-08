@@ -78,11 +78,11 @@ func GetLastLogs(userId string, serverId int, channel string, lastLogId int64, c
 
 	key := fmt.Sprintf("log:%s:%d:%s", userId, serverId, strings.ToLower(channel))
 
-	var min interface{}
+	var min string
 	if lastLogId != -1 {
 		min = "-inf"
 	} else {
-		min = lastLogId
+		min = fmt.Sprintf("(%d", lastLogId)
 	}
 	reply, err := redis.Values(r.Do("ZREVRANGEBYSCORE", key, "+inf", min, "LIMIT", 0, count))
 	if err != nil {
@@ -110,9 +110,9 @@ func GetPastLogs(userId string, serverId int, channel string, lastLogId int64, c
 	defer r.Close()
 
 	key := fmt.Sprintf("log:%s:%d:%s", userId, serverId, strings.ToLower(channel))
-	min := fmt.Sprintf("(%d", lastLogId)
+	max := fmt.Sprintf("(%d", lastLogId)
 
-	reply, err := redis.Values(r.Do("ZRANGEBYSCORE", key, min, "+inf", "LIMIT", 0, count))
+	reply, err := redis.Values(r.Do("ZREVRANGEBYSCORE", key, max, "-inf", "LIMIT", 0, count))
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func GetPastLogs(userId string, serverId int, channel string, lastLogId int64, c
 		if err != nil {
 			return nil, err
 		}
-		logs[i] = &log
+		logs[len(logs)-1-i] = &log
 	}
 	return logs, nil
 }

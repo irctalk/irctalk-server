@@ -194,7 +194,7 @@ func (u *User) GetPastLogs(lastLogId int64, numLogs, serverId int, channel strin
 
 func (u *User) GetInitLogs(lastLogId int64, numLogs int) ([]*common.IRCLog, error) {
 	channels := u.GetChannels()
-	var logs []*common.IRCLog
+	logs := make([]*common.IRCLog, 0)
 	for _, channel := range channels {
 		_logs, err := common.GetLastLogs(u.Id, channel.ServerId, channel.Name, lastLogId, numLogs)
 		if err != nil {
