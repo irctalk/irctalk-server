@@ -78,6 +78,9 @@ func GetLastLogs(userId string, serverId int, channel string, lastLogId int64, c
 
 	key := fmt.Sprintf("log:%s:%d:%s", userId, serverId, strings.ToLower(channel))
 
+	if count == 0 {
+		count = 30
+	}
 	var min string
 	if lastLogId != -1 {
 		min = "-inf"
@@ -111,6 +114,10 @@ func GetPastLogs(userId string, serverId int, channel string, lastLogId int64, c
 
 	key := fmt.Sprintf("log:%s:%d:%s", userId, serverId, strings.ToLower(channel))
 	max := fmt.Sprintf("(%d", lastLogId)
+
+	if count == 0 {
+		count = 30
+	}
 
 	reply, err := redis.Values(r.Do("ZREVRANGEBYSCORE", key, max, "-inf", "LIMIT", 0, count))
 	if err != nil {

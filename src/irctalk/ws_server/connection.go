@@ -93,17 +93,13 @@ func MakeDefaultPacketHandler() *PacketMux {
 		reqBody := packet.body.(*ReqGetInitLogs)
 		resBody := resp.body.(*ResGetInitLogs)
 
-		numLogs := 30
 		lastLogId := int64(-1)
-		if reqBody.LogCount != 0 {
-			numLogs = reqBody.LogCount
-		}
 		if reqBody.LastLogId != 0 {
 			lastLogId = reqBody.LastLogId
 		}
 
 		var err error
-		resBody.Logs, err = c.user.GetInitLogs(lastLogId, numLogs)
+		resBody.Logs, err = c.user.GetInitLogs(lastLogId, reqBody.LogCount)
 		if err != nil {
 			log.Printf("getInitLog Error :", err)
 			resp.Status = -500
