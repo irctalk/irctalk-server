@@ -155,7 +155,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		}
 		c.user.SendChatMsg(reqBody.ServerId, irclog.Channel, irclog.Message)
 		resBody.Log = irclog
-		c.user.Send(MakePacket(resBody), c)
+		c.user.Send(MakePacket(&SendPushLog{Log:irclog}), c)
 	}))
 
 	h.HandleFunc("addServer", AuthUser(func(c *Connection, packet *Packet) {
