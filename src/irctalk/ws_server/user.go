@@ -112,7 +112,11 @@ func (um *UserManager) run() {
 	for {
 		select {
 		case c := <-um.register:
-			c.user.conns[c] = true
+			if c.isClosed {
+				log.Println("Ignore Closed Connection")
+			} else {
+				c.user.conns[c] = true
+			}
 		case c := <-um.unregister:
 			if c.user != nil {
 				delete(c.user.conns, c)

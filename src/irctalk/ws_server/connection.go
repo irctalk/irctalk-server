@@ -14,6 +14,7 @@ type Connection struct {
 	user     *User
 	handler  PacketHandler
 	stoprecv chan bool
+	isClosed bool
 }
 
 func AuthUser(f func(*Connection, *Packet)) func(*Connection, *Packet) {
@@ -204,6 +205,7 @@ func (cm *ConnectionManager) run() {
 			// delete connection from user
 			manager.user.unregister <- c
 			close(c.send)
+			c.isClosed = true
 		}
 	}
 }
