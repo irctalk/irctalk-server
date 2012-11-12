@@ -61,6 +61,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
 		reqBody := packet.body.(*ReqLogin)
+		resBody := resp.body.(*ResLogin)
 
 		user, err := manager.user.GetUserByKey(reqBody.AuthKey)
 		if err != nil {
@@ -73,6 +74,16 @@ func MakeDefaultPacketHandler() *PacketMux {
 
 		// add connection to user
 		manager.user.register <- c
+
+		if reqBody.PushType != "" {
+			resBody.Alert, err = c.user.GetNotification(reqBody.PushType, reqBody.PushToken)
+			if err != nil {
+				log.Println("[Login] GetPushAlertStatus Error:", err)
+				resp.Status = -500
+				resp.Msg = err.Error()
+				return
+			}
+		}
 
 		log.Printf("%+v\n", user)
 	})
@@ -181,6 +192,19 @@ func MakeDefaultPacketHandler() *PacketMux {
 		c.user.AddChannelMsg(reqBody.ServerId, reqBody.Channel)
 	}))
 
+	h.HandleFunc("setNotification", AuthUser(func(c *Connection, packet *Packet) {
+		resp := packet.MakeResponse()
+		defer c.Send(resp)
+		reqBody := packet.body.(*ReqSetNotification)
+
+		if err := c.user.SetNotification(reqBody.PushType, reqBody.PushToken, reqBody.Alert); err != nil {
+			log.Println("SetNotification Error : ", err)
+			resp.Status = -500
+			resp.Msg = err.Error()
+			return
+		}
+	}))
+
 	return h
 }
 
@@ -228,7 +252,7 @@ STOP:
 		}()
 		select {
 		case packet := <-recv:
-			log.Printf("%+v\n", packet)
+			log.Printf("-> [%s](%d): %s", packet.Cmd, packet.Status, string(packet.RawData))
 			c.handler.Handle(c, packet)
 		case <-c.stoprecv:
 			break STOP
@@ -269,6 +293,7 @@ func (c *Connection) Send(packet *Packet) {
 		log.Println("Json Marshal Error:", packet.body, err)
 		return
 	}
+	log.Printf("<- [%s](%d): %s", packet.Cmd, packet.Status, string(packet.RawData))
 	select {
 	case c.send <- packet:
 	case <-time.After(2 * time.Second):

@@ -153,6 +153,9 @@ func (u *User) ServerListKey() string {
 func (u *User) ChannelListKey() string {
 	return fmt.Sprintf("channels:%s", u.Id)
 }
+func (u *User) PushTokenListKey() string {
+	return fmt.Sprintf("tokens:%s", u.Id)
+}
 
 func (u *User) GetServers() (servers []*common.IRCServer) {
 	err := common.RedisSliceLoad(u.ServerListKey(), &servers)
@@ -229,6 +232,26 @@ func (u *User) SendChatMsg(serverid int, target, message string) {
 func (u *User) ChangeServerActive(serverId int, active bool) {
 	packet := MakePacket(&SendServerActive{ServerId:serverId, Active:active})
 	u.Send(packet, nil)
+}
+
+func (u *User) GetNotification(pushType, pushToken string) (bool, error) {
+	r := common.DefaultRedisPool().Get()
+	defer r.Close()
+
+	token := fmt.Sprintf("%s:%s", pushType, pushToken)
+	alert, err := redis.Int(r.Do("SISMEMBER", u.PushTokenListKey(), token))
+
+	return alert == 1, err
+}
+
+func (u *User) SetNotification(pushType, pushToken string, isAlert bool) (err error) {
+	tokens := []string{fmt.Sprintf("%s:%s", pushType, pushToken)}
+	if isAlert {
+		err = common.RedisSliceSave(u.PushTokenListKey(), &tokens)
+	} else {
+		err = common.RedisSliceRemove(u.PushTokenListKey(), &tokens)
+	}
+	return
 }
 
 type UserMessage struct {

@@ -2,18 +2,18 @@ package main
 
 import (
 	"irctalk/common"
-	"reflect"
 	"log"
+	"reflect"
 )
 
 var reqTypeMap map[string]reflect.Type
 var resTypeMap map[string]reflect.Type
 
 type Packet struct {
-	Cmd     string `json:"type"`
-	MsgId   int    `json:"msg_id,omitempty"`
-	Status  int    `json:"status"`
-	Msg     string `json:"msg,omitempty"`
+	Cmd     string   `json:"type"`
+	MsgId   int      `json:"msg_id,omitempty"`
+	Status  int      `json:"status"`
+	Msg     string   `json:"msg,omitempty"`
 	RawData JSONData `json:"data"`
 	body    interface{}
 }
@@ -80,6 +80,7 @@ func RegisterPacket() {
 	registerRequestPacketType(ReqDelChannel{})
 	registerRequestPacketType(ReqEditChannel{})
 	registerRequestPacketType(AckPushLog{})
+	registerRequestPacketType(ReqSetNotification{})
 
 	registerResponsePacketType(ResRegister{})
 	registerResponsePacketType(ResLogin{})
@@ -95,6 +96,7 @@ func RegisterPacket() {
 	registerResponsePacketType(ResEditChannel{})
 	registerResponsePacketType(SendPushLog{})
 	registerResponsePacketType(SendServerActive{})
+	registerResponsePacketType(ResSetNotification{})
 }
 
 type ReqRegister struct {
@@ -114,7 +116,9 @@ func (p ResRegister) GetPacketCommand() string {
 }
 
 type ReqLogin struct {
-	AuthKey string `json:"auth_key"`
+	AuthKey   string `json:"auth_key"`
+	PushType  string `json:"push_type"`
+	PushToken string `json:"push_token"`
 }
 
 func (p ReqLogin) GetPacketCommand() string {
@@ -122,6 +126,7 @@ func (p ReqLogin) GetPacketCommand() string {
 }
 
 type ResLogin struct {
+	Alert bool `json:"alert,omitempty"`
 }
 
 func (p ResLogin) GetPacketCommand() string {
@@ -328,4 +333,21 @@ type ResEditChannel struct {
 
 func (p ResEditChannel) GetPacketCommand() string {
 	return "editChannel"
+}
+
+type ReqSetNotification struct {
+	PushType string `json:"push_type"`
+	PushToken    string `json:"push_token"`
+	Alert          bool   `json:"alert"`
+}
+
+func (p ReqSetNotification) GetPacketCommand() string {
+	return "setNotification"
+}
+
+type ResSetNotification struct {
+}
+
+func (p ResSetNotification) GetPacketCommand() string {
+	return "setNotification"
 }

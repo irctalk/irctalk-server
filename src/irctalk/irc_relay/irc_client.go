@@ -225,6 +225,7 @@ func (c *IRCClient) AddChannel(name string) {
 			UserId:   c.UserId,
 			ServerId: c.ServerId,
 			Name:     name,
+			Members:  make([]string, 0),
 		},
 		members: make(map[string]bool),
 	}

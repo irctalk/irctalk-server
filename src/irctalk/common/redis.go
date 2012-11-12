@@ -13,7 +13,7 @@ func DefaultRedisPool() *redis.Pool {
 	return pool
 }
 
-func MakeRedisPool(proto, addr string, db, maxIdle int)  {
+func MakeRedisPool(proto, addr string, db, maxIdle int) {
 	if pool != nil {
 		pool.Close()
 	}
@@ -50,6 +50,10 @@ type RedisStorer interface {
 
 type RedisLoader interface {
 	RedisLoad(redis.Conn) error
+}
+
+type RedisRemover interface {
+	RedisRemove(redis.Conn) error
 }
 
 func RedisSave(v interface{}) error {
@@ -96,6 +100,24 @@ func RedisLoadWithConn(r redis.Conn, v interface{}) (err error) {
 	return
 }
 
+func RedisRemove(v interface{}) error {
+	r := pool.Get()
+	defer r.Close()
+	return RedisRemoveWithConn(r, v)
+}
+
+func RedisRemoveWithConn(r redis.Conn, v interface{}) (err error) {
+	switch rm := v.(type) {
+	case RedisRemover:
+		err = rm.RedisRemove(r)
+	case RedisInterface:
+		_, err = r.Do("DEL", rm.GetKey())
+	default:
+		err = fmt.Errorf("Unsupported Type!")
+	}
+	return
+}
+
 type RedisSlice struct {
 	key   string
 	slice reflect.Value
@@ -134,12 +156,21 @@ func RedisSliceLoad(key string, slicePtr interface{}) error {
 	return err
 }
 
+func RedisSliceRemove(key string, slicePtr interface{}) error {
+	rs, err := MakeRedisSlice(key, slicePtr)
+	if err != nil {
+		return err
+	}
+	err = RedisRemove(rs)
+	return err
+}
+
 func (v *RedisSlice) RedisSave(r redis.Conn) error {
 	if v.slice.Len() == 0 {
 		return nil
 	}
 
-	var keys = make([]interface{}, v.slice.Len() + 1)
+	var keys = make([]interface{}, v.slice.Len()+1)
 	keys[0] = v.key
 	for i := 0; i < v.slice.Len(); i++ {
 		switch ro := v.slice.Index(i).Interface().(type) {
@@ -200,6 +231,25 @@ func (v *RedisSlice) RedisLoad(r redis.Conn) error {
 		v.slice.Set(newVal)
 	}
 	return nil
+}
+
+func (v *RedisSlice) RedisRemove(r redis.Conn) error {
+	if v.slice.Len() == 0 {
+		return nil
+	}
+	keys := make([]interface{}, v.slice.Len()+1)
+	keys[0] = v.key
+	for i := 0; i < v.slice.Len(); i++ {
+		switch ro := v.slice.Index(i).Interface().(type) {
+		case RedisInterface:
+			keys[i+1] = ro.GetKey()
+			RedisRemoveWithConn(r, ro)
+		default:
+			keys[i+1] = ro
+		}
+	}
+	_, err := r.Do("SREM", keys...)
+	return err
 }
 
 type RedisNumber struct {
