@@ -252,7 +252,7 @@ STOP:
 		}()
 		select {
 		case packet := <-recv:
-			log.Printf("-> [%s](%d): %s", packet.Cmd, packet.Status, string(packet.RawData))
+			log.Printf("-> [%s](%d): %s[%d]", packet.Cmd, packet.Status, string(packet.RawData), len(packet.RawData))
 			c.handler.Handle(c, packet)
 		case <-c.stoprecv:
 			break STOP
@@ -293,7 +293,7 @@ func (c *Connection) Send(packet *Packet) {
 		log.Println("Json Marshal Error:", packet.body, err)
 		return
 	}
-	log.Printf("<- [%s](%d): %s", packet.Cmd, packet.Status, string(packet.RawData))
+	log.Printf("<- [%s](%d): %s[%d]", packet.Cmd, packet.Status, string(packet.RawData), len(packet.RawData))
 	select {
 	case c.send <- packet:
 	case <-time.After(2 * time.Second):
