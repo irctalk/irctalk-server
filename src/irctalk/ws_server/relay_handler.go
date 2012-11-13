@@ -15,9 +15,10 @@ func InitHandler(z *common.ZmqMessenger) {
 			return
 		}
 		irclog := msg.Body().(*common.ZmqChat).Log
+		noti := msg.Body().(*common.ZmqChat).Noti
 
 		log.Printf("Msg Recv: %+v\n", irclog)
-		packet := MakePacket(&SendPushLog{Log:irclog})
+		packet := MakePacket(&SendPushLog{Log:irclog, Noti:noti})
 		user.Send(packet, nil)
 	})
 

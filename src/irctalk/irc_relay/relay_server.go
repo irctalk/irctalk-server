@@ -79,7 +79,6 @@ func LoadDb() {
 		}
 		for _, channel := range channels {
 			c := ircMgr.GetClient(channel.UserId, channel.ServerId)
-			channel.Joined = false
 			c.AddChannel(channel.Name)
 		}
 	}

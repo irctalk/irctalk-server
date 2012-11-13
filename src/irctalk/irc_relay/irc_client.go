@@ -76,7 +76,7 @@ func NewClient(info *common.IRCServer) *IRCClient {
 		InsecureSkipVerify: true,
 	}
 
-	client.conn.AddHandler("connected", func(conn *irc.Conn, line *irc.Line) {
+	client.conn.AddHandler("376", func(conn *irc.Conn, line *irc.Line) {
 		for _, channel := range client.channels {
 			if !channel.joined {
 				channel.joined = true
@@ -155,6 +155,7 @@ func NewClient(info *common.IRCServer) *IRCClient {
 			log.Println("Invalid Channel :", line.Args[1])
 			return
 		}
+		channel.info.Joined = true
 		_channel := channel.WriteChannelInfo(true)
 
 		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqAddChannel{Channel: _channel})
@@ -190,8 +191,8 @@ func NewClient(info *common.IRCServer) *IRCClient {
 		if len(line.Args) == 2 && line.Args[0][0] == '#' {
 			// write log to redis
 			ircLog := client.WriteChatLog(line.Time, line.Nick, line.Args[0], line.Args[1])
-
-			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
+			noti := strings.Contains(line.Args[1], conn.Me.Nick)
+			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog, Noti: noti})
 		}
 	})
 	return client
@@ -238,9 +239,9 @@ func (c *IRCClient) AddChannel(name string) {
 		return
 	}
 
-	channel.joined = c.conn.Connected
+	channel.joined = c.serverInfo.Active
 	c.channels[strings.ToLower(name)] = channel
-	if c.conn.Connected {
+	if c.serverInfo.Active {
 		c.conn.Join(name)
 	}
 }
