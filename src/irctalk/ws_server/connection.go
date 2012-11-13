@@ -3,18 +3,20 @@ package main
 import (
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
+	"fmt"
 	"irctalk/common"
 	"log"
 	"time"
 )
 
 type Connection struct {
-	ws       *websocket.Conn
-	send     chan *Packet
-	user     *User
-	handler  PacketHandler
-	stoprecv chan bool
-	isClosed bool
+	ws        *websocket.Conn
+	send      chan *Packet
+	user      *User
+	handler   PacketHandler
+	pushToken string
+	stoprecv  chan bool
+	isClosed  bool
 }
 
 func AuthUser(f func(*Connection, *Packet)) func(*Connection, *Packet) {
@@ -72,9 +74,6 @@ func MakeDefaultPacketHandler() *PacketMux {
 		}
 		c.user = user
 
-		// add connection to user
-		manager.user.register <- c
-
 		if reqBody.PushType != "" {
 			resBody.Alert, err = c.user.GetNotification(reqBody.PushType, reqBody.PushToken)
 			if err != nil {
@@ -83,7 +82,11 @@ func MakeDefaultPacketHandler() *PacketMux {
 				resp.Msg = err.Error()
 				return
 			}
+			c.pushToken = fmt.Sprintf("%s:%s", reqBody.PushType, reqBody.PushToken)
 		}
+
+		// add connection to user
+		manager.user.register <- c
 
 		log.Printf("%+v\n", user)
 	})
@@ -139,7 +142,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 	}))
 
 	h.HandleFunc("pushLog", AuthUser(func(c *Connection, packet *Packet) {
-		log.Printf("%+v\n", packet)
+		c.user.AckPushMessage(packet.MsgId)
 	}))
 
 	h.HandleFunc("sendLog", AuthUser(func(c *Connection, packet *Packet) {
@@ -167,7 +170,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		}
 		c.user.SendChatMsg(reqBody.ServerId, irclog.Channel, irclog.Message)
 		resBody.Log = irclog
-		c.user.Send(MakePacket(&SendPushLog{Log:irclog}), c)
+		c.user.Send(MakePacket(&SendPushLog{Log: irclog}), c)
 	}))
 
 	h.HandleFunc("addServer", AuthUser(func(c *Connection, packet *Packet) {

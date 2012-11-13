@@ -336,9 +336,9 @@ func (p ResEditChannel) GetPacketCommand() string {
 }
 
 type ReqSetNotification struct {
-	PushType string `json:"push_type"`
-	PushToken    string `json:"push_token"`
-	Alert          bool   `json:"alert"`
+	PushType  string `json:"push_type"`
+	PushToken string `json:"push_token"`
+	Alert     bool   `json:"alert"`
 }
 
 func (p ReqSetNotification) GetPacketCommand() string {

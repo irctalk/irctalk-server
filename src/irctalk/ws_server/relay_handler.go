@@ -10,16 +10,24 @@ import (
 
 func InitHandler(z *common.ZmqMessenger) {
 	z.HandleFunc("CHAT", func(msg *common.ZmqMsg) {
-		user, err := manager.user.GetConnectedUser(msg.UserId)
-		if err != nil {
-			return
-		}
 		irclog := msg.Body().(*common.ZmqChat).Log
 		noti := msg.Body().(*common.ZmqChat).Noti
 
-		log.Printf("Msg Recv: %+v\n", irclog)
-		packet := MakePacket(&SendPushLog{Log:irclog, Noti:noti})
-		user.Send(packet, nil)
+		if noti {
+			packet := MakePacket(&SendPushLog{Log: irclog, Noti: noti})
+			err := manager.user.SendPushMessage(msg.UserId, packet)
+			if err != nil {
+				log.Println("Push Error: ", err)
+			}
+		} else {
+			user, err := manager.user.GetConnectedUser(msg.UserId)
+			if err != nil {
+				return
+			}
+			log.Printf("Msg Recv: %+v\n", irclog)
+			packet := MakePacket(&SendPushLog{Log: irclog, Noti: noti})
+			user.Send(packet, nil)
+		}
 	})
 
 	z.HandleFunc("SERVER_STATUS", func(msg *common.ZmqMsg) {
@@ -40,7 +48,7 @@ func InitHandler(z *common.ZmqMessenger) {
 		}
 
 		channel := msg.Body().(*common.ZmqAddChannel).Channel
-		packet := MakePacket(&ResAddChannel{Channel:channel})
+		packet := MakePacket(&ResAddChannel{Channel: channel})
 		user.Send(packet, nil)
 	})
 }

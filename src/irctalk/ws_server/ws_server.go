@@ -37,7 +37,7 @@ var manager = &Managers{
 		unregister: make(chan *Connection),
 		broadcast:  make(chan *UserMessage, 256),
 	},
-	zmq:   common.NewZmqMessenger("tcp://127.0.0.1:9100", "tcp://127.0.0.1:9200", 4),
+	zmq: common.NewZmqMessenger("tcp://127.0.0.1:9100", "tcp://127.0.0.1:9200", 4),
 }
 
 func wsHandler(ws *websocket.Conn) {
@@ -50,7 +50,7 @@ func wsHandler(ws *websocket.Conn) {
 }
 
 func main() {
-	log.SetFlags(log.LstdFlags|log.Lshortfile)
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	manager.start()
 	http.Handle("/", websocket.Handler(wsHandler))
 	err := http.ListenAndServe(":9001", nil)

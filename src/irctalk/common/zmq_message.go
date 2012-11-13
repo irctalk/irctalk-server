@@ -120,7 +120,6 @@ func (zm *ZmqMessenger) Start() {
 				if err != nil {
 					log.Println("ZmqMsg Decode Error : ", err)
 				} else {
-					log.Printf("%+v\n", zmq_msg)
 					zm.Recv <- &zmq_msg
 				}
 			}

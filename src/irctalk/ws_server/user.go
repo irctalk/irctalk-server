@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"io"
 	"irctalk/common"
+	"log"
 	"redigo/redis"
 	"sync"
+	"sync/atomic"
 	"time"
-	"log"
 )
 
 // Errors
@@ -37,6 +38,35 @@ type UserManager struct {
 	register   chan *Connection
 	unregister chan *Connection
 	broadcast  chan *UserMessage
+}
+
+func (um *UserManager) SendPushMessage(userId string, packet *Packet) error {
+	_tokens := make([]string, 0)
+	tokenListKey := fmt.Sprintf("tokens:%s", userId)
+
+	err := common.RedisSliceLoad(tokenListKey, &_tokens)
+	if err != nil {
+		return err
+	}
+
+	tokens := make(map[string]bool)
+	for _, token := range _tokens {
+		tokens[token] = true
+	}
+
+	user, _ := um.GetConnectedUser(userId)
+	if user != nil {
+		// websocket connection으로 푸시 전송 시도
+		ignoreTokens := user.SendPushMessage(packet)
+		for _, token := range ignoreTokens {
+			delete(tokens, token)
+		}
+	}
+
+	if len(tokens) != 0 {
+		// 푸시 Agent로 푸시 전송 시도
+	}
+	return nil
 }
 
 func (um *UserManager) GetUserByKey(key string) (*User, error) {
@@ -82,10 +112,11 @@ func (um *UserManager) GetUserById(id string) (*User, error) {
 
 func (um *UserManager) LoadUser(id string) *User {
 	user := &User{
-		Id:          id,
-		conns:       make(map[*Connection]bool),
-		serverIdSeq: &common.RedisNumber{Key: fmt.Sprintf("serverid:%s", id)},
-		logIdSeq:    &common.RedisNumber{Key: fmt.Sprintf("logid:%s", id)},
+		Id:           id,
+		conns:        make(map[*Connection]string),
+		serverIdSeq:  &common.RedisNumber{Key: fmt.Sprintf("serverid:%s", id)},
+		logIdSeq:     &common.RedisNumber{Key: fmt.Sprintf("logid:%s", id)},
+		waitingTimer: make(map[int]*time.Timer),
 	}
 
 	return user
@@ -115,11 +146,15 @@ func (um *UserManager) run() {
 			if c.isClosed {
 				log.Println("Ignore Closed Connection")
 			} else {
-				c.user.conns[c] = true
+				c.user.Lock()
+				c.user.conns[c] = c.pushToken
+				c.user.Unlock()
 			}
 		case c := <-um.unregister:
 			if c.user != nil {
+				c.user.Lock()
 				delete(c.user.conns, c)
+				c.user.Unlock()
 				if len(c.user.conns) == 0 {
 					um.Lock()
 					delete(um.users, c.user.Id)
@@ -128,12 +163,14 @@ func (um *UserManager) run() {
 			}
 		case m := <-um.broadcast:
 			cnt := 0
+			m.user.RLock()
 			for c := range m.user.conns {
 				if c != m.conn {
 					go c.Send(m.packet)
 					cnt++
 				}
 			}
+			m.user.RUnlock()
 			log.Printf("[%s] broadcast to %d clients\n", m.user.Id, cnt)
 		}
 	}
@@ -141,10 +178,12 @@ func (um *UserManager) run() {
 
 type User struct {
 	sync.RWMutex
-	Id          string
-	conns       map[*Connection]bool
-	serverIdSeq *common.RedisNumber
-	logIdSeq    *common.RedisNumber
+	Id           string
+	conns        map[*Connection]string
+	serverIdSeq  *common.RedisNumber
+	logIdSeq     *common.RedisNumber
+	msgIdSeq     int32
+	waitingTimer map[int]*time.Timer
 }
 
 func (u *User) ServerListKey() string {
@@ -230,7 +269,7 @@ func (u *User) SendChatMsg(serverid int, target, message string) {
 }
 
 func (u *User) ChangeServerActive(serverId int, active bool) {
-	packet := MakePacket(&SendServerActive{ServerId:serverId, Active:active})
+	packet := MakePacket(&SendServerActive{ServerId: serverId, Active: active})
 	u.Send(packet, nil)
 }
 
@@ -252,6 +291,44 @@ func (u *User) SetNotification(pushType, pushToken string, isAlert bool) (err er
 		err = common.RedisSliceRemove(u.PushTokenListKey(), &tokens)
 	}
 	return
+}
+
+func (u *User) AckPushMessage(msgId int) {
+	u.Lock()
+	defer u.Unlock()
+
+	t, ok := u.waitingTimer[msgId]
+	if !ok {
+		log.Println("AckPushMessage received too late: ", msgId)
+		return
+	}
+	delete(u.waitingTimer, msgId)
+	t.Stop()
+}
+
+func (u *User) SendPushMessage(packet *Packet) []string {
+	u.Lock()
+	defer u.Unlock()
+
+	var tokens []string
+	for c, token := range u.conns {
+		p := &Packet{Cmd: packet.Cmd, MsgId: int(atomic.AddInt32(&u.msgIdSeq, 1)), body: packet.body}
+		u.waitingTimer[p.MsgId] = time.AfterFunc(30*time.Second, func() {
+			u.Lock()
+			defer u.Unlock()
+			// timer function에 진입 했지만 AckPushMessage에서 먼저 lock을 잡은상태에서 stop을 하고 제거를 했을수도 있음
+			if _, ok := u.waitingTimer[p.MsgId]; !ok {
+				return
+			}
+			delete(u.waitingTimer, p.MsgId)
+			log.Println("Send PushMessage via websocket connection failed.", p)
+			// send to agent
+		})
+		go c.Send(p)
+		tokens = append(tokens, token)
+	}
+
+	return tokens
 }
 
 type UserMessage struct {

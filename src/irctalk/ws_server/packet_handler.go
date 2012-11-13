@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"log"
+	"reflect"
 )
 
 type PacketHandlerFunc func(*Connection, *Packet)
