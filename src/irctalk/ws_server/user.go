@@ -321,7 +321,7 @@ func (u *User) SendPushMessage(packet *Packet) []string {
 				return
 			}
 			delete(u.waitingTimer, p.MsgId)
-			log.Println("Send PushMessage via websocket connection failed.", p)
+			log.Printf("Send PushMessage via websocket connection failed. [%s](%d) %s", p.Cmd, p.MsgId, string(p.RawData))
 			// send to agent
 		})
 		go c.Send(p)
