@@ -96,6 +96,7 @@ func RegisterPacket() {
 	registerResponsePacketType(ResEditChannel{})
 	registerResponsePacketType(SendPushLog{})
 	registerResponsePacketType(SendServerActive{})
+	registerResponsePacketType(SendUpdateChannel{})
 	registerResponsePacketType(ResSetNotification{})
 }
 
@@ -204,7 +205,7 @@ func (p ResSendLog) GetPacketCommand() string {
 }
 
 type SendPushLog struct {
-	Log  *common.IRCLog `json:"log"`
+	Log *common.IRCLog `json:"log"`
 }
 
 func (p SendPushLog) GetPacketCommand() string {
@@ -261,11 +262,11 @@ func (p ResAddChannel) GetPacketCommand() string {
 	return "addChannel"
 }
 
-type PushUpdateChannel struct {
-	Channel *common.IRCChannel `json:"channel"`
+type SendUpdateChannel struct {
+	DeltaChannels []common.IRCDeltaChannel `json:"channels"`
 }
 
-func (p PushUpdateChannel) GetPacketCommand() string {
+func (p SendUpdateChannel) GetPacketCommand() string {
 	return "updateChannel"
 }
 

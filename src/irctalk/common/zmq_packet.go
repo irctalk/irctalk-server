@@ -46,6 +46,14 @@ func (z ZmqSendChat) GetPacketCommand() string {
 	return "SEND_CHAT"
 }
 
+type ZmqUpdateChannel struct {
+	DeltaChannels []IRCDeltaChannel
+}
+
+func (z ZmqUpdateChannel) GetPacketCommand() string {
+	return "UPDATE_CHANNEL"
+}
+
 func RegisterPacket() {
 	typeMap = make(map[string]reflect.Type)
 	registerPacketType(ZmqChat{})
@@ -53,4 +61,5 @@ func RegisterPacket() {
 	registerPacketType(ZmqServerStatus{})
 	registerPacketType(ZmqAddServer{})
 	registerPacketType(ZmqSendChat{})
+	registerPacketType(ZmqUpdateChannel{})
 }

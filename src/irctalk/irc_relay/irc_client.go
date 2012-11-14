@@ -103,6 +103,20 @@ func NewClient(info *common.IRCServer) *IRCClient {
 		client.disconnected <- true
 	})
 
+	client.conn.AddHandler("TOPIC", func(conn *irc.Conn, line *irc.Line) {
+		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s changed the topic of %s to: %s", line.Nick, line.Args[0], line.Args[1]))
+
+		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
+
+		if channel, ok := client.GetChannel(line.Args[0]); ok {
+			delta := channel.SetTopic(line.Args[1])
+			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqUpdateChannel{DeltaChannels: []common.IRCDeltaChannel{delta}})
+		} else {
+			log.Println("Invalid Channel :", line.Args[0])
+			return
+		}
+	})
+
 	client.conn.AddHandler("JOIN", func(conn *irc.Conn, line *irc.Line) {
 		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s has joined %s", line.Nick, line.Args[0]))
 
@@ -116,7 +130,8 @@ func NewClient(info *common.IRCServer) *IRCClient {
 				log.Println("Invalid Channel :", line.Args[0])
 				return
 			}
-			channel.JoinUser(line.Nick)
+			delta := channel.JoinUser(line.Nick)
+			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqUpdateChannel{DeltaChannels: []common.IRCDeltaChannel{delta}})
 		}
 	})
 
@@ -161,9 +176,9 @@ func NewClient(info *common.IRCServer) *IRCClient {
 			return
 		}
 		channel.info.Joined = true
-		_channel := channel.WriteChannelInfo(true)
+		delta := channel.WriteChannelInfo(true)
 
-		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqAddChannel{Channel: _channel})
+		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqUpdateChannel{DeltaChannels: []common.IRCDeltaChannel{delta}})
 	})
 
 	client.conn.AddHandler("NICK", func(conn *irc.Conn, line *irc.Line) {
@@ -172,22 +187,34 @@ func NewClient(info *common.IRCServer) *IRCClient {
 			client.WriteServerInfo()
 		}
 		message := fmt.Sprintf("%s is now known as %s", line.Nick, line.Args[0])
+
+		var deltaChannels []common.IRCDeltaChannel
 		for _, channel := range client.channels {
-			if channel.NickChange(line.Nick, line.Args[0]) {
+			if delta, changed := channel.NickChange(line.Nick, line.Args[0]); changed {
 				ircLog := client.WriteChatLog(line.Time, "", channel.info.Name, message)
 
 				zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
+				deltaChannels = append(deltaChannels, delta)
 			}
+		}
+		if deltaChannels != nil {
+			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqUpdateChannel{DeltaChannels: deltaChannels})
 		}
 	})
 
 	client.conn.AddHandler("QUIT", func(conn *irc.Conn, line *irc.Line) {
 		message := fmt.Sprintf("%s has quit [%s]", line.Nick, line.Args[0])
+
+		var deltaChannels []common.IRCDeltaChannel
 		for _, channel := range client.channels {
-			if channel.PartUser(line.Nick) {
+			if delta, parted := channel.PartUser(line.Nick); parted {
 				ircLog := client.WriteChatLog(line.Time, "", channel.info.Name, message)
 				zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
+				deltaChannels = append(deltaChannels, delta)
 			}
+		}
+		if deltaChannels != nil {
+			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqUpdateChannel{DeltaChannels: deltaChannels})
 		}
 	})
 

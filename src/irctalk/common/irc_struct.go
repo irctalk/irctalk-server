@@ -29,8 +29,10 @@ type IRCChannel struct {
 	Topic    string   `json:"topic"`
 	Members  []string `json:"members"`
 	Joined   bool     `json:"joined"`
-	LastLog  *IRCLog  `json:"last_log"`
+	LastLog  *IRCLog  `json:"last_log,omitempty"`
 }
+
+type IRCDeltaChannel map[string]interface{}
 
 type IRCUser struct {
 	Nickname string `json:"nickname"`

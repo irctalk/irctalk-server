@@ -231,7 +231,9 @@ func (u *User) AddServer(server *common.IRCServer) (*common.IRCServer, error) {
 }
 
 func (u *User) AddChannelMsg(serverid int, channel string) {
-	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverid, common.ZmqAddChannel{Channel: &common.IRCChannel{Name: channel}})
+	_channel := &common.IRCChannel{Name: channel}
+	u.Send(MakePacket(&ResAddChannel{Channel:_channel}), nil)
+	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverid, common.ZmqAddChannel{Channel: _channel})
 }
 
 func (u *User) GetPastLogs(lastLogId int64, numLogs, serverId int, channel string) ([]*common.IRCLog, error) {

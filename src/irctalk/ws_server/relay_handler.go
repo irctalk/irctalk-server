@@ -39,15 +39,14 @@ func InitHandler(z *common.ZmqMessenger) {
 		user.ChangeServerActive(msg.ServerId, active)
 	})
 
-	z.HandleFunc("ADD_CHANNEL", func(msg *common.ZmqMsg) {
+	z.HandleFunc("UPDATE_CHANNEL", func(msg *common.ZmqMsg) {
 		user, err := manager.user.GetConnectedUser(msg.UserId)
 		if err != nil {
-			log.Println("[ZMQMSG]ADD_CHANNEL ERROR:", err)
 			return
 		}
 
-		channel := msg.Body().(*common.ZmqAddChannel).Channel
-		packet := MakePacket(&ResAddChannel{Channel: channel})
+		channels := msg.Body().(*common.ZmqUpdateChannel).DeltaChannels
+		packet := MakePacket(&SendUpdateChannel{DeltaChannels: channels})
 		user.Send(packet, nil)
 	})
 }
