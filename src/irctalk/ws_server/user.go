@@ -65,6 +65,16 @@ func (um *UserManager) SendPushMessage(userId string, packet *Packet) error {
 
 	if len(tokens) != 0 {
 		// 푸시 Agent로 푸시 전송 시도
+		pushMessage := &PushMessage{
+			PushTokens: make([]string, len(tokens)),
+			Payload:    packet,
+		}
+		i := 0
+		for token, _ := range tokens {
+			pushMessage.PushTokens[i] = token
+			i++
+		}
+		manager.push.Send <- pushMessage
 	}
 	return nil
 }
@@ -232,7 +242,6 @@ func (u *User) AddServer(server *common.IRCServer) (*common.IRCServer, error) {
 
 func (u *User) AddChannelMsg(serverid int, channel string) {
 	_channel := &common.IRCChannel{Name: channel}
-	u.Send(MakePacket(&ResAddChannel{Channel:_channel}), nil)
 	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverid, common.ZmqAddChannel{Channel: _channel})
 }
 
@@ -325,6 +334,7 @@ func (u *User) SendPushMessage(packet *Packet) []string {
 			delete(u.waitingTimer, p.MsgId)
 			log.Printf("Send PushMessage via websocket connection failed. [%s](%d) %s", p.Cmd, p.MsgId, string(p.RawData))
 			// send to agent
+			manager.push.Send <- &PushMessage{[]string{token}, p}
 		})
 		go c.Send(p)
 		tokens = append(tokens, token)

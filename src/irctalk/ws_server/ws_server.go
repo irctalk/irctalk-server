@@ -11,6 +11,7 @@ type Managers struct {
 	connection *ConnectionManager
 	user       *UserManager
 	zmq        *common.ZmqMessenger
+	push       *PushManager
 }
 
 func (m *Managers) start() {
@@ -19,6 +20,7 @@ func (m *Managers) start() {
 	common.MakeRedisPool("tcp", ":9002", 0, 16)
 	common.RegisterPacket()
 	InitHandler(m.zmq)
+	go m.push.run()
 	go m.zmq.Start()
 	go m.connection.run()
 	go m.user.run()
@@ -38,6 +40,9 @@ var manager = &Managers{
 		broadcast:  make(chan *UserMessage, 256),
 	},
 	zmq: common.NewZmqMessenger("tcp://127.0.0.1:9100", "tcp://127.0.0.1:9200", 4),
+	push: &PushManager{
+		Send: make(chan *PushMessage, 256),
+	},
 }
 
 func wsHandler(ws *websocket.Conn) {

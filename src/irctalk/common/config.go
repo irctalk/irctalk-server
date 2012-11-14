@@ -15,6 +15,7 @@ type OauthType struct {
 
 type ConfigType struct {
 	Oauth OauthType
+	GCMAPIKey string
 }
 
 var Config ConfigType

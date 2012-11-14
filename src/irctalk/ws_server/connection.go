@@ -191,7 +191,12 @@ func MakeDefaultPacketHandler() *PacketMux {
 	}))
 
 	h.HandleFunc("addChannel", AuthUser(func(c *Connection, packet *Packet) {
+		resp := packet.MakeResponse()
+		defer c.Send(resp)
 		reqBody := packet.body.(*ReqAddChannel)
+		resBody := packet.body.(*ResAddChannel)
+
+		resBody.Channel = &common.IRCChannel{Name: reqBody.Channel, ServerId: reqBody.ServerId}
 		c.user.AddChannelMsg(reqBody.ServerId, reqBody.Channel)
 	}))
 
