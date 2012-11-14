@@ -196,8 +196,8 @@ func NewClient(info *common.IRCServer) *IRCClient {
 		if len(line.Args) == 2 && line.Args[0][0] == '#' {
 			// write log to redis
 			ircLog := client.WriteChatLog(line.Time, line.Nick, line.Args[0], line.Args[1])
-			noti := strings.Contains(line.Args[1], conn.Me.Nick)
-			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog, Noti: noti})
+			ircLog.Noti = strings.Contains(line.Args[1], conn.Me.Nick)
+			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 		}
 	})
 	return client

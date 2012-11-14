@@ -11,10 +11,9 @@ import (
 func InitHandler(z *common.ZmqMessenger) {
 	z.HandleFunc("CHAT", func(msg *common.ZmqMsg) {
 		irclog := msg.Body().(*common.ZmqChat).Log
-		noti := msg.Body().(*common.ZmqChat).Noti
 
-		if noti {
-			packet := MakePacket(&SendPushLog{Log: irclog, Noti: noti})
+		if irclog.Noti {
+			packet := MakePacket(&SendPushLog{Log: irclog})
 			err := manager.user.SendPushMessage(msg.UserId, packet)
 			if err != nil {
 				log.Println("Push Error: ", err)
@@ -25,7 +24,7 @@ func InitHandler(z *common.ZmqMessenger) {
 				return
 			}
 			log.Printf("Msg Recv: %+v\n", irclog)
-			packet := MakePacket(&SendPushLog{Log: irclog, Noti: noti})
+			packet := MakePacket(&SendPushLog{Log: irclog})
 			user.Send(packet, nil)
 		}
 	})

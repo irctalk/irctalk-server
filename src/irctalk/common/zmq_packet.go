@@ -8,7 +8,6 @@ type ZmqPacket interface {
 
 type ZmqChat struct {
 	Log *IRCLog
-	Noti bool
 }
 
 func (z ZmqChat) GetPacketCommand() string {

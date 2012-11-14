@@ -205,7 +205,6 @@ func (p ResSendLog) GetPacketCommand() string {
 
 type SendPushLog struct {
 	Log  *common.IRCLog `json:"log"`
-	Noti bool           `json:"noti,omitempty"`
 }
 
 func (p SendPushLog) GetPacketCommand() string {

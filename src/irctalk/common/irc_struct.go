@@ -19,6 +19,7 @@ type IRCLog struct {
 	Channel   string `json:"channel"`
 	From      string `json:"from,omitempty"`
 	Message   string `json:"message"`
+	Noti	  bool   `json:"noti,omitempty"`
 }
 
 type IRCChannel struct {
