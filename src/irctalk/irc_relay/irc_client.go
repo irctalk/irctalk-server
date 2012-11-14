@@ -95,6 +95,11 @@ func NewClient(info *common.IRCServer) *IRCClient {
 
 		client.serverInfo.Active = false
 		client.WriteServerInfo()
+		for _, channel := range client.channels {
+			channel.joined = false
+			channel.info.Joined = false
+			channel.WriteChannelInfo(false)
+		}
 		client.disconnected <- true
 	})
 
