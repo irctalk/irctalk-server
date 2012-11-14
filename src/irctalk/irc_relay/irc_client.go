@@ -145,7 +145,9 @@ func NewClient(info *common.IRCServer) *IRCClient {
 			log.Println("Invalid Channel :", line.Args[0])
 			return
 		}
-		channel.PartUser(line.Nick)
+		if delta, ok := channel.PartUser(line.Nick); ok {
+			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqUpdateChannel{DeltaChannels: []common.IRCDeltaChannel{delta}})
+		}
 	})
 
 	client.conn.AddHandler("332", func(conn *irc.Conn, line *irc.Line) {
