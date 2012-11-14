@@ -37,6 +37,13 @@ func InitHandler() {
 		c := ircMgr.GetClientByMsg(msg)
 		c.SendLog(packet.Target, packet.Message)
 	})
+
+	zmqMgr.HandleFunc("JOIN_PART_CHANNEL", func(msg *common.ZmqMsg) {
+		packet := msg.Body().(*common.ZmqJoinPartChannel)
+		c := ircMgr.GetClientByMsg(msg)
+		log.Println(msg, packet)
+		c.JoinPartChannel(packet.Channel, packet.Join)
+	})
 }
 
 func LoadDb() {

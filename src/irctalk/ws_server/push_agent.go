@@ -14,6 +14,7 @@ type PushManager struct {
 }
 
 type PushMessage struct {
+	UserId     string
 	PushTokens []string
 	Payload    *Packet
 }
@@ -28,9 +29,9 @@ func (m *PushManager) run() {
 		for pushType, pushTokens := range _tokens {
 			switch pushType {
 			case "gcm":
-				go m.SendGCM(pushTokens, pushMsg.Payload)
+				go m.SendGCM(pushMsg.UserId, pushTokens, pushMsg.Payload)
 			case "apns":
-				go m.SendAPNS(pushTokens, pushMsg.Payload)
+				go m.SendAPNS(pushMsg.UserId, pushTokens, pushMsg.Payload)
 			default:
 				log.Println("Unknown Push Type Error: ", pushType)
 			}
@@ -38,7 +39,11 @@ func (m *PushManager) run() {
 	}
 }
 
-func (m *PushManager) SendGCM(pushTokens []string, payload *Packet) {
+func (m *PushManager) PushTokenListKey(userId string) string {
+	return fmt.Sprintf("tokens:%s", userId)
+}
+
+func (m *PushManager) SendGCM(userId string, pushTokens []string, payload *Packet) {
 	c := gcm.New(common.Config.GCMAPIKey)
 	msg := gcm.NewMessage(pushTokens...)
 	switch body := payload.body.(type) {
@@ -62,8 +67,21 @@ func (m *PushManager) SendGCM(pushTokens []string, payload *Packet) {
 		log.Println("SendGCM Error: ", err2)
 	}
 	log.Printf("%+v", resp)
+	var removeTokens []string
+	for i, result := range resp.Results {
+		switch result.Error {
+		case "NotRegistered":
+			removeTokens = append(removeTokens, "gcm:"+pushTokens[i])
+		}
+	}
+	if removeTokens != nil {
+		err = common.RedisSliceRemove(m.PushTokenListKey(userId), &removeTokens)
+		if err != nil {
+			log.Println("SendGCM - RemoveTokens Error: ", err2)
+		}
+	}
 }
 
-func (m *PushManager) SendAPNS(pushTokens []string, payload *Packet) {
+func (m *PushManager) SendAPNS(userId string, pushTokens []string, payload *Packet) {
 	// 아직 지원하지 않습니다.
 }

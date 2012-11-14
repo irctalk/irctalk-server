@@ -75,6 +75,15 @@ func (c *Channel) SetTopic(topic string) common.IRCDeltaChannel {
 	return delta
 }
 
+func (c *Channel) Part() common.IRCDeltaChannel {
+	c.info.Joined = false
+	c.members = make(map[string]bool)
+	c.WriteChannelInfo(true)
+	delta := c.MakeDeltaChannel()
+	delta["Joined"] = false
+	return delta
+}
+
 func (c *Channel) MakeDeltaChannel() common.IRCDeltaChannel {
 	delta := make(common.IRCDeltaChannel)
 	delta["server_id"] = c.info.ServerId

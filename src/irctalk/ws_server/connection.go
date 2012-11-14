@@ -213,6 +213,14 @@ func MakeDefaultPacketHandler() *PacketMux {
 		}
 	}))
 
+	h.HandleFunc("joinPartChannel", AuthUser(func(c *Connection, packet *Packet) {
+		resp := packet.MakeResponse()
+		defer c.Send(resp)
+		reqBody := packet.body.(*ReqJoinPartChannel)
+
+		c.user.JoinPartChannel(reqBody.ServerId, reqBody.Channel, reqBody.Join)
+	}))
+
 	return h
 }
 

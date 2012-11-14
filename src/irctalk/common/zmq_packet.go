@@ -54,6 +54,15 @@ func (z ZmqUpdateChannel) GetPacketCommand() string {
 	return "UPDATE_CHANNEL"
 }
 
+type ZmqJoinPartChannel struct {
+	Channel string
+	Join bool
+}
+
+func (z ZmqJoinPartChannel) GetPacketCommand() string {
+	return "JOIN_PART_CHANNEL"
+}
+
 func RegisterPacket() {
 	typeMap = make(map[string]reflect.Type)
 	registerPacketType(ZmqChat{})

@@ -66,6 +66,7 @@ func (um *UserManager) SendPushMessage(userId string, packet *Packet) error {
 	if len(tokens) != 0 {
 		// 푸시 Agent로 푸시 전송 시도
 		pushMessage := &PushMessage{
+			UserId:     userId,
 			PushTokens: make([]string, len(tokens)),
 			Payload:    packet,
 		}
@@ -304,6 +305,10 @@ func (u *User) SetNotification(pushType, pushToken string, isAlert bool) (err er
 	return
 }
 
+func (u *User) JoinPartChannel(serverId int, channel string, join bool) {
+	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverId, common.ZmqJoinPartChannel{Channel: channel, Join: join})
+}
+
 func (u *User) AckPushMessage(msgId int) {
 	u.Lock()
 	defer u.Unlock()
@@ -334,7 +339,7 @@ func (u *User) SendPushMessage(packet *Packet) []string {
 			delete(u.waitingTimer, p.MsgId)
 			log.Printf("Send PushMessage via websocket connection failed. [%s](%d) %s", p.Cmd, p.MsgId, string(p.RawData))
 			// send to agent
-			manager.push.Send <- &PushMessage{[]string{token}, p}
+			manager.push.Send <- &PushMessage{u.Id, []string{token}, p}
 		})
 		go c.Send(p)
 		tokens = append(tokens, token)

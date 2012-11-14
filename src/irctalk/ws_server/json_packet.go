@@ -281,7 +281,6 @@ func (p ReqJoinPartChannel) GetPacketCommand() string {
 }
 
 type ResJoinPartChannel struct {
-	Channel *common.IRCChannel `json:"channel"`
 }
 
 func (p ResJoinPartChannel) GetPacketCommand() string {

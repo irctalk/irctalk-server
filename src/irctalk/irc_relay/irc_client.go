@@ -145,7 +145,12 @@ func NewClient(info *common.IRCServer) *IRCClient {
 			log.Println("Invalid Channel :", line.Args[0])
 			return
 		}
-		if delta, ok := channel.PartUser(line.Nick); ok {
+		if line.Nick == conn.Me.Nick {
+			// 내가 나갔을경우
+			delta := channel.Part()
+			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqUpdateChannel{DeltaChannels: []common.IRCDeltaChannel{delta}})
+		} else if delta, ok := channel.PartUser(line.Nick); ok {
+			// 남이 나갔을 경우
 			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqUpdateChannel{DeltaChannels: []common.IRCDeltaChannel{delta}})
 		}
 	})
@@ -277,6 +282,22 @@ func (c *IRCClient) AddChannel(name string) {
 	c.channels[strings.ToLower(name)] = channel
 	if c.serverInfo.Active {
 		c.conn.Join(name)
+	}
+}
+
+func (c *IRCClient) JoinPartChannel(name string, join bool) {
+	channel, ok := c.GetChannel(name)
+	if !ok {
+		log.Println("JoinPartChannel Error: Channel does not exist", name)
+		return
+	}
+	if join == channel.info.Joined || c.serverInfo.Active {
+		return
+	}
+	if join {
+		c.conn.Join(name)
+	} else {
+		c.conn.Part(name, "Good Bye.")
 	}
 }
 
