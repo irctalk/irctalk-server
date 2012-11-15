@@ -194,7 +194,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 		resp := packet.MakeResponse()
 		defer c.Send(resp)
 		reqBody := packet.body.(*ReqAddChannel)
-		resBody := packet.body.(*ResAddChannel)
+		resBody := resp.body.(*ResAddChannel)
 
 		resBody.Channel = &common.IRCChannel{Name: reqBody.Channel, ServerId: reqBody.ServerId}
 		c.user.AddChannelMsg(reqBody.ServerId, reqBody.Channel)
