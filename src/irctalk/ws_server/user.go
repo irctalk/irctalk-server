@@ -58,7 +58,7 @@ func (um *UserManager) SendPushMessage(userId string, packet *Packet) error {
 	if user != nil {
 		// websocket connection으로 푸시 전송 시도
 		ignoreTokens := user.SendPushMessage(packet)
-		for _, token := range ignoreTokens {
+		for token, _ := range ignoreTokens {
 			delete(tokens, token)
 		}
 	}
@@ -322,17 +322,23 @@ func (u *User) AckPushMessage(msgId int) {
 	t.Stop()
 }
 
-func (u *User) SendPushMessage(packet *Packet) []string {
+func (u *User) SendPushMessage(packet *Packet) map[string]int {
 	u.Lock()
 	defer u.Unlock()
 
-	var tokens []string
+	tokens := make(map[string]int)
 	for c, token := range u.conns {
-		p := &Packet{Cmd: packet.Cmd, MsgId: int(atomic.AddInt32(&u.msgIdSeq, 1)), body: packet.body}
+		msgId, ok := tokens[token]
+		if !ok {
+			msgId = int(atomic.AddInt32(&u.msgIdSeq, 1))
+		}
+		p := &Packet{Cmd: packet.Cmd, MsgId: msgId, body: packet.body}
 		go c.Send(p)
 
 		// 토큰이 있는 커넥션들에 대해서 처리
-		if token != "" {
+		// 같은 토큰에 대해선 타이머에 등록하지 않는다.
+		log.Printf("Token: [%s]", token)
+		if token != "" && !ok {
 			u.waitingTimer[p.MsgId] = time.AfterFunc(30*time.Second, func() {
 				u.Lock()
 				defer u.Unlock()
@@ -345,7 +351,7 @@ func (u *User) SendPushMessage(packet *Packet) []string {
 				// send to agent
 				manager.push.Send <- &PushMessage{u.Id, []string{token}, p}
 			})
-			tokens = append(tokens, token)
+			tokens[token] = p.MsgId
 		}
 	}
 
