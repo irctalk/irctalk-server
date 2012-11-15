@@ -14,8 +14,9 @@ type OauthType struct {
 }
 
 type ConfigType struct {
-	Oauth OauthType
-	GCMAPIKey string
+	Oauth               OauthType
+	GCMAPIKey           string
+	PushResponseTimeout int64
 }
 
 var Config ConfigType

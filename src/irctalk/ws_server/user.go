@@ -339,7 +339,8 @@ func (u *User) SendPushMessage(packet *Packet) map[string]int {
 		// 같은 토큰에 대해선 타이머에 등록하지 않는다.
 		log.Printf("Token: [%s]", token)
 		if token != "" && !ok {
-			u.waitingTimer[p.MsgId] = time.AfterFunc(30*time.Second, func() {
+			_token := token
+			u.waitingTimer[p.MsgId] = time.AfterFunc(time.Duration(common.Config.PushResponseTimeout)*time.Second, func() {
 				u.Lock()
 				defer u.Unlock()
 				// timer function에 진입 했지만 AckPushMessage에서 먼저 lock을 잡은상태에서 stop을 하고 제거를 했을수도 있음
@@ -347,9 +348,9 @@ func (u *User) SendPushMessage(packet *Packet) map[string]int {
 					return
 				}
 				delete(u.waitingTimer, p.MsgId)
-				log.Printf("Send PushMessage via websocket connection failed. [%s](%d) %s", p.Cmd, p.MsgId, string(p.RawData))
+				log.Printf("Send PushMessage via websocket connection failed. Token:%s [%s](%d) %s", _token, p.Cmd, p.MsgId, string(p.RawData))
 				// send to agent
-				manager.push.Send <- &PushMessage{u.Id, []string{token}, p}
+				manager.push.Send <- &PushMessage{UserId: u.Id, PushTokens: []string{_token}, Payload: p}
 			})
 			tokens[token] = p.MsgId
 		}
