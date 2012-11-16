@@ -309,6 +309,10 @@ func (u *User) JoinPartChannel(serverId int, channel string, join bool) {
 	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverId, common.ZmqJoinPartChannel{Channel: channel, Join: join})
 }
 
+func (u *User) DelChannel(serverId int, channel string) {
+	manager.zmq.Send <- common.MakeZmqMsg(u.Id, serverId, common.ZmqDelChannel{Channel: channel})
+}
+
 func (u *User) AckPushMessage(msgId int) {
 	u.Lock()
 	defer u.Unlock()

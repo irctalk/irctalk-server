@@ -221,6 +221,14 @@ func MakeDefaultPacketHandler() *PacketMux {
 		c.user.JoinPartChannel(reqBody.ServerId, reqBody.Channel, reqBody.Join)
 	}))
 
+	h.HandleFunc("delChannel", AuthUser(func(c *Connection, packet *Packet) {
+		resp := packet.MakeResponse()
+		defer c.Send(resp)
+		reqBody := packet.body.(*ReqDelChannel)
+
+		c.user.DelChannel(reqBody.ServerId, reqBody.Channel)
+	}))
+
 	return h
 }
 

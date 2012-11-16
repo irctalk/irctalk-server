@@ -180,6 +180,7 @@ func NewClient(info *common.IRCServer) *IRCClient {
 		channel, ok := client.GetChannel(line.Args[1])
 		if !ok {
 			log.Println("Invalid Channel :", line.Args[1])
+			conn.Part(line.Args[1], "Invalid Channel")
 			return
 		}
 		channel.info.Joined = true
@@ -248,6 +249,7 @@ func (c *IRCClient) Connect() {
 			log.Println("Connect Error:", err)
 		} else {
 			<-c.disconnected
+			tryCount = 0
 		}
 		time.Sleep(time.Duration(config.ReconnectInterval) * time.Second)
 	}
@@ -292,7 +294,7 @@ func (c *IRCClient) JoinPartChannel(name string, join bool) {
 		log.Println("JoinPartChannel Error: Channel does not exist", name)
 		return
 	}
-	if join == channel.info.Joined || c.serverInfo.Active {
+	if join == channel.info.Joined || !c.serverInfo.Active {
 		return
 	}
 	if join {
@@ -300,6 +302,28 @@ func (c *IRCClient) JoinPartChannel(name string, join bool) {
 	} else {
 		c.conn.Part(name, "Good Bye.")
 	}
+}
+
+func (c *IRCClient) DelChannel(name string) {
+	channel, ok := c.GetChannel(name)
+	if !ok {
+		log.Println("DelChannel Error: Channel does not exist", name)
+		return
+	}
+	if channel.info.Joined {
+		log.Println("DelChannel Error: Cannot delete joined channel", name)
+		return
+	}
+	delete(c.channels, strings.ToLower(name))
+
+	channels := []*common.IRCChannel{channel.info}
+	if err := common.RedisSliceRemove(fmt.Sprintf("channels:%s", c.UserId), &channels); err != nil {
+		log.Println("DelChannel Error: Redis Remove Error:", err)
+		return
+	}
+
+	zmqMgr.Send <- c.MakeZmqMsg(common.ZmqDelChannel{Channel: "-"+name})
+
 }
 
 func (c *IRCClient) WriteChatLog(timestamp time.Time, from, channel, message string) *common.IRCLog {

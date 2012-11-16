@@ -49,4 +49,17 @@ func InitHandler(z *common.ZmqMessenger) {
 		packet := MakePacket(&SendUpdateChannel{DeltaChannels: channels})
 		user.Send(packet, nil)
 	})
+
+	z.HandleFunc("DEL_CHANNEL", func(msg *common.ZmqMsg) {
+		user, err := manager.user.GetConnectedUser(msg.UserId)
+		if err != nil {
+			return
+		}
+
+		channel := make(common.IRCDeltaChannel)
+		channel["server_id"] = msg.ServerId
+		channel["channel"] = msg.Body().(*common.ZmqDelChannel).Channel
+		packet := MakePacket(&SendUpdateChannel{DeltaChannels: []common.IRCDeltaChannel{channel}})
+		user.Send(packet, nil)
+	})
 }
