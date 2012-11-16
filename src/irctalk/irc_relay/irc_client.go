@@ -242,15 +242,16 @@ func (c *IRCClient) MakeZmqMsg(packet common.ZmqPacket) *common.ZmqMsg {
 }
 
 func (c *IRCClient) Connect() {
-	for {
+	for tryCount := 0; tryCount < config.ReconnectCount; tryCount++ {
 		addr := fmt.Sprintf("%s:%d", c.serverInfo.Server.Host, c.serverInfo.Server.Port)
 		if err := c.conn.Connect(addr); err != nil {
 			log.Println("Connect Error:", err)
 		} else {
 			<-c.disconnected
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(time.Duration(config.ReconnectInterval) * time.Second)
 	}
+	log.Printf("Connect failed: %+v", c.serverInfo)
 }
 
 func (c *IRCClient) SendLog(target, message string) {

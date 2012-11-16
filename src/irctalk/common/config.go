@@ -13,10 +13,15 @@ type OauthType struct {
 	RedirectURL  string
 }
 
+type RelayServerConfig struct {
+	ReconnectCount	int
+	ReconnectInterval int
+}
 type ConfigType struct {
 	Oauth               OauthType
 	GCMAPIKey           string
 	PushResponseTimeout int64
+	RelayServer         RelayServerConfig
 }
 
 var Config ConfigType

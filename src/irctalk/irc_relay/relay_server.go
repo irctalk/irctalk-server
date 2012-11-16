@@ -91,8 +91,14 @@ func LoadDb() {
 	}
 }
 
+var config common.RelayServerConfig
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	if err := common.InitConfig(); err != nil {
+		log.Fatal("InitConfig Error!")
+	}
+	config = common.Config.RelayServer
 	common.MakeRedisPool("tcp", ":9002", 0, 16)
 	go ircMgr.run()
 	LoadDb()
