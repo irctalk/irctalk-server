@@ -93,6 +93,7 @@ func NewClient(info *common.IRCServer) *IRCClient {
 	client.conn.AddHandler("disconnected", func(conn *irc.Conn, line *irc.Line) {
 		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqServerStatus{Active: false})
 
+		pActive := client.serverInfo.Active
 		client.serverInfo.Active = false
 		client.WriteServerInfo()
 		for _, channel := range client.channels {
@@ -100,11 +101,11 @@ func NewClient(info *common.IRCServer) *IRCClient {
 			channel.info.Joined = false
 			channel.WriteChannelInfo(false)
 		}
-		client.disconnected <- true
+		client.disconnected <- pActive
 	})
 
 	client.conn.AddHandler("TOPIC", func(conn *irc.Conn, line *irc.Line) {
-		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s changed the topic of %s to: %s", line.Nick, line.Args[0], line.Args[1]))
+		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s changed the topic of %s to: %s", line.Nick, line.Args[0], line.Args[1]), false)
 
 		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 
@@ -118,7 +119,7 @@ func NewClient(info *common.IRCServer) *IRCClient {
 	})
 
 	client.conn.AddHandler("JOIN", func(conn *irc.Conn, line *irc.Line) {
-		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s has joined %s", line.Nick, line.Args[0]))
+		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s has joined %s", line.Nick, line.Args[0]), false)
 
 		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 
@@ -136,7 +137,7 @@ func NewClient(info *common.IRCServer) *IRCClient {
 	})
 
 	client.conn.AddHandler("PART", func(conn *irc.Conn, line *irc.Line) {
-		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s has left %s", line.Nick, line.Args[0]))
+		ircLog := client.WriteChatLog(line.Time, "", line.Args[0], fmt.Sprintf("%s has left %s", line.Nick, line.Args[0]), false)
 
 		zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 
@@ -199,7 +200,7 @@ func NewClient(info *common.IRCServer) *IRCClient {
 		var deltaChannels []common.IRCDeltaChannel
 		for _, channel := range client.channels {
 			if delta, changed := channel.NickChange(line.Nick, line.Args[0]); changed {
-				ircLog := client.WriteChatLog(line.Time, "", channel.info.Name, message)
+				ircLog := client.WriteChatLog(line.Time, "", channel.info.Name, message, false)
 
 				zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 				deltaChannels = append(deltaChannels, delta)
@@ -216,7 +217,7 @@ func NewClient(info *common.IRCServer) *IRCClient {
 		var deltaChannels []common.IRCDeltaChannel
 		for _, channel := range client.channels {
 			if delta, parted := channel.PartUser(line.Nick); parted {
-				ircLog := client.WriteChatLog(line.Time, "", channel.info.Name, message)
+				ircLog := client.WriteChatLog(line.Time, "", channel.info.Name, message, false)
 				zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 				deltaChannels = append(deltaChannels, delta)
 			}
@@ -230,8 +231,8 @@ func NewClient(info *common.IRCServer) *IRCClient {
 		log.Printf("%+v\n", line)
 		if len(line.Args) == 2 && line.Args[0][0] == '#' {
 			// write log to redis
-			ircLog := client.WriteChatLog(line.Time, line.Nick, line.Args[0], line.Args[1])
-			ircLog.Noti = strings.Contains(line.Args[1], conn.Me.Nick)
+			noti := strings.Contains(line.Args[1], conn.Me.Nick)
+			ircLog := client.WriteChatLog(line.Time, line.Nick, line.Args[0], line.Args[1], noti)
 			zmqMgr.Send <- client.MakeZmqMsg(common.ZmqChat{Log: ircLog})
 		}
 	})
@@ -243,13 +244,19 @@ func (c *IRCClient) MakeZmqMsg(packet common.ZmqPacket) *common.ZmqMsg {
 }
 
 func (c *IRCClient) Connect() {
+	defer func() {
+		if x := recover(); x != nil {
+			log.Println("Connect Fatal Error!", x)
+		}
+	}()
 	for tryCount := 0; tryCount < config.ReconnectCount; tryCount++ {
 		addr := fmt.Sprintf("%s:%d", c.serverInfo.Server.Host, c.serverInfo.Server.Port)
 		if err := c.conn.Connect(addr); err != nil {
 			log.Println("Connect Error:", err)
 		} else {
-			<-c.disconnected
-			tryCount = 0
+			if <-c.disconnected {
+				tryCount = 0
+			}
 		}
 		time.Sleep(time.Duration(config.ReconnectInterval) * time.Second)
 	}
@@ -259,7 +266,7 @@ func (c *IRCClient) Connect() {
 func (c *IRCClient) SendLog(target, message string) {
 	// write to redis for logging
 	c.conn.Privmsg(target, message)
-	c.WriteChatLog(time.Now(), c.serverInfo.User.Nickname, target, message)
+	c.WriteChatLog(time.Now(), c.serverInfo.User.Nickname, target, message, false)
 }
 
 func (c *IRCClient) AddChannel(name string) {
@@ -322,11 +329,11 @@ func (c *IRCClient) DelChannel(name string) {
 		return
 	}
 
-	zmqMgr.Send <- c.MakeZmqMsg(common.ZmqDelChannel{Channel: "-"+name})
+	zmqMgr.Send <- c.MakeZmqMsg(common.ZmqDelChannel{Channel: "-" + name})
 
 }
 
-func (c *IRCClient) WriteChatLog(timestamp time.Time, from, channel, message string) *common.IRCLog {
+func (c *IRCClient) WriteChatLog(timestamp time.Time, from, channel, message string, noti bool) *common.IRCLog {
 	ircLog := &common.IRCLog{
 		UserId:    c.UserId,
 		LogId:     c.logIdSeq.Incr(),
@@ -335,6 +342,7 @@ func (c *IRCClient) WriteChatLog(timestamp time.Time, from, channel, message str
 		Channel:   channel,
 		From:      from,
 		Message:   message,
+		Noti:      noti,
 	}
 
 	common.RedisSave(ircLog)
