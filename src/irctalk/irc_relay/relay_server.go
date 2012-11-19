@@ -106,7 +106,7 @@ func main() {
 		log.Fatal("InitConfig Error!")
 	}
 	config = common.Config.RelayServer
-	common.MakeRedisPool("tcp", ":9002", 0, 16)
+	common.MakeRedisPool(common.Config.Redis)
 	go ircMgr.run()
 	LoadDb()
 	common.RegisterPacket()

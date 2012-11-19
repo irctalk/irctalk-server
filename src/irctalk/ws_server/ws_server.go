@@ -14,7 +14,7 @@ type Managers struct {
 	push       *PushManager
 }
 
-var config common.WebsocketServer
+var config common.WebsocketServerConfig
 
 func (m *Managers) start() {
 	if err := common.InitConfig(); err != nil {
@@ -22,7 +22,7 @@ func (m *Managers) start() {
 	}
 	config = common.Config.WebsocketServer
 	RegisterPacket()
-	common.MakeRedisPool("tcp", ":9002", 0, 16)
+	common.MakeRedisPool(common.Config.Redis)
 	common.RegisterPacket()
 	InitHandler(m.zmq)
 	go m.push.run()

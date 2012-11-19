@@ -13,21 +13,27 @@ func DefaultRedisPool() *redis.Pool {
 	return pool
 }
 
-func MakeRedisPool(proto, addr string, db, maxIdle int) {
+func MakeRedisPool(config RedisConfig) {
 	if pool != nil {
 		pool.Close()
 	}
 	pool = redis.NewPool(func() (redis.Conn, error) {
-		c, err := redis.Dial(proto, addr)
+		c, err := redis.Dial("tcp", config.Addr)
 		if err != nil {
 			return nil, err
 		}
-		_, err = c.Do("SELECT", db)
+		if config.Password != "" {
+			_, err = c.Do("AUTH", config.Password)
+			if err != nil {
+				return nil, err
+			}
+		}
+		_, err = c.Do("SELECT", config.Database)
 		if err != nil {
 			return nil, err
 		}
 		return c, nil
-	}, maxIdle)
+	}, config.MaxIdle)
 }
 
 type RedisInterface interface {

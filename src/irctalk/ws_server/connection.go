@@ -56,6 +56,22 @@ func MakeDefaultPacketHandler() *PacketMux {
 			resp.Msg = "Invalid Access Token"
 			return
 		}
+		email := userinfo["email"].(string)
+		verified := userinfo["verified_email"].(bool)
+		if !verified {
+			log.Println("Email is not verified")
+			resp.Status = -403
+			resp.Msg = "Your email is not verified"
+			return
+		}
+		if config.AllowedUserOnly {
+			if !manager.user.CheckAllowedUser(email) {
+				log.Println("Not Allowed User:", email)
+				resp.Status = -403
+				resp.Msg = "You're not allowed user. Please, contact to admin"
+				return
+			}
+		}
 		resBody.AuthKey = manager.user.RegisterUser(id)
 	})
 

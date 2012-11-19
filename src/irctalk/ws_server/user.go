@@ -84,10 +84,12 @@ func (um *UserManager) GetUserByKey(key string) (*User, error) {
 	r := common.DefaultRedisPool().Get()
 	defer r.Close()
 
-	id, err := redis.String(r.Do("HGET", "key", key))
+	redisKey := "key:" + key
+	id, err := redis.String(r.Do("GET", redisKey))
 	if err != nil {
 		return nil, &CacheNotFound{key: key}
 	}
+	r.Do("EXPIRE", redisKey, 172800)
 	return um.GetUserById(id)
 }
 
@@ -143,11 +145,25 @@ func (um *UserManager) RegisterUser(id string) string {
 
 	r := common.DefaultRedisPool().Get()
 	defer r.Close()
-	_, err := r.Do("HSET", "key", key, id)
+	redisKey := "key:" + key
+	_, err := r.Do("SET", redisKey, id)
 	if err != nil {
 		log.Println("RegisterUser: ", err)
 	}
+	r.Do("EXPIRE", redisKey, 172800)
 	return key
+}
+
+func (um *UserManager) CheckAllowedUser(email string) bool {
+	r := common.DefaultRedisPool().Get()
+	defer r.Close()
+
+	allowed, err := redis.Int(r.Do("SISMEMBER", "allowed_user", email))
+	if err == nil {
+		log.Println("CheckAllowedUser Error:", err)
+		return false
+	}
+	return allowed == 1
 }
 
 func (um *UserManager) run() {

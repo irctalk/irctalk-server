@@ -18,8 +18,16 @@ type RelayServerConfig struct {
 	ReconnectInterval int
 }
 
-type WebsocketServer struct {
+type WebsocketServerConfig struct {
 	KeepAliveInterval int
+	AllowedUserOnly   bool
+}
+
+type RedisConfig struct {
+	Addr     string
+	Password string
+	Database int
+	MaxIdle  int
 }
 
 type ConfigType struct {
@@ -27,7 +35,8 @@ type ConfigType struct {
 	GCMAPIKey           string
 	PushResponseTimeout int64
 	RelayServer         RelayServerConfig
-	WebsocketServer     WebsocketServer
+	WebsocketServer     WebsocketServerConfig
+	Redis               RedisConfig
 }
 
 var Config ConfigType
