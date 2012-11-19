@@ -14,14 +14,20 @@ type OauthType struct {
 }
 
 type RelayServerConfig struct {
-	ReconnectCount	int
+	ReconnectCount    int
 	ReconnectInterval int
 }
+
+type WebsocketServer struct {
+	KeepAliveInterval int
+}
+
 type ConfigType struct {
 	Oauth               OauthType
 	GCMAPIKey           string
 	PushResponseTimeout int64
 	RelayServer         RelayServerConfig
+	WebsocketServer     WebsocketServer
 }
 
 var Config ConfigType

@@ -229,6 +229,11 @@ func MakeDefaultPacketHandler() *PacketMux {
 		c.user.DelChannel(reqBody.ServerId, reqBody.Channel)
 	}))
 
+	h.HandleFunc("ping", func(c *Connection, packet *Packet) {
+		resp := packet.MakeResponse()
+		defer c.Send(resp)
+	})
+
 	return h
 }
 
@@ -278,6 +283,9 @@ STOP:
 		case packet := <-recv:
 			log.Printf("-> [%s](%d): %s[%d]", packet.Cmd, packet.Status, string(packet.RawData), len(packet.RawData))
 			c.handler.Handle(c, packet)
+		case <- time.After(time.Duration(config.KeepAliveInterval)*time.Second):
+			log.Printf("KeepAlive Timeout!")
+			break STOP
 		case <-c.stoprecv:
 			break STOP
 		case <-stop:

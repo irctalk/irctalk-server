@@ -14,8 +14,13 @@ type Managers struct {
 	push       *PushManager
 }
 
+var config common.WebsocketServer
+
 func (m *Managers) start() {
-	common.InitConfig()
+	if err := common.InitConfig(); err != nil {
+		log.Fatalln(err)
+	}
+	config = common.Config.WebsocketServer
 	RegisterPacket()
 	common.MakeRedisPool("tcp", ":9002", 0, 16)
 	common.RegisterPacket()

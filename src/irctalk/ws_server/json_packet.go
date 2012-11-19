@@ -81,6 +81,7 @@ func RegisterPacket() {
 	registerRequestPacketType(ReqEditChannel{})
 	registerRequestPacketType(AckPushLog{})
 	registerRequestPacketType(ReqSetNotification{})
+	registerRequestPacketType(ReqPing{})
 
 	registerResponsePacketType(ResRegister{})
 	registerResponsePacketType(ResLogin{})
@@ -98,6 +99,7 @@ func RegisterPacket() {
 	registerResponsePacketType(SendServerActive{})
 	registerResponsePacketType(SendUpdateChannel{})
 	registerResponsePacketType(ResSetNotification{})
+	registerResponsePacketType(ResPing{})
 }
 
 type ReqRegister struct {
@@ -349,4 +351,18 @@ type ResSetNotification struct {
 
 func (p ResSetNotification) GetPacketCommand() string {
 	return "setNotification"
+}
+
+type ReqPing struct {
+}
+
+func (p ReqPing) GetPacketCommand() string {
+	return "ping"
+}
+
+type ResPing struct {
+}
+
+func (p ResPing) GetPacketCommand() string {
+	return "ping"
 }
