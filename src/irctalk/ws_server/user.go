@@ -159,7 +159,7 @@ func (um *UserManager) CheckAllowedUser(email string) bool {
 	defer r.Close()
 
 	allowed, err := redis.Int(r.Do("SISMEMBER", "allowed_user", email))
-	if err == nil {
+	if err != nil {
 		log.Println("CheckAllowedUser Error:", err)
 		return false
 	}
