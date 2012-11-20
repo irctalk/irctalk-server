@@ -129,7 +129,8 @@ func (p ReqLogin) GetPacketCommand() string {
 }
 
 type ResLogin struct {
-	Alert bool `json:"alert,omitempty"`
+	Alert             bool `json:"alert,omitempty"`
+	KeepAliveInterval int  `json:"keepalive"`
 }
 
 func (p ResLogin) GetPacketCommand() string {

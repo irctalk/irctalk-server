@@ -100,6 +100,7 @@ func MakeDefaultPacketHandler() *PacketMux {
 			}
 			c.pushToken = fmt.Sprintf("%s:%s", reqBody.PushType, reqBody.PushToken)
 		}
+		resBody.KeepAliveInterval = config.KeepAliveInterval
 
 		// add connection to user
 		manager.user.register <- c
