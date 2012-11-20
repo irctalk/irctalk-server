@@ -63,7 +63,7 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	manager.start()
 	http.Handle("/", websocket.Handler(wsHandler))
-	err := http.ListenAndServe(":9001", nil)
+	err := http.ListenAndServe(config.BindAddress, nil)
 	if err != nil {
 		panic("ListenAndServe: " + err.Error())
 	}

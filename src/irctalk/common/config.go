@@ -19,6 +19,7 @@ type RelayServerConfig struct {
 }
 
 type WebsocketServerConfig struct {
+	BindAddress       string
 	KeepAliveInterval int
 	AllowedUserOnly   bool
 }
